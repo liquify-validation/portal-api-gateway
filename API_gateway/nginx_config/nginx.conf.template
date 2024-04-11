@@ -1,0 +1,282 @@
+worker_processes auto;
+
+events {
+    worker_connections 1024;  # Maximum number of simultaneous connections per worker process
+}
+
+http {
+    lua_shared_dict api_key_cache 10m;
+    lua_shared_dict api_org_cache 10m;
+    lua_shared_dict prometheus_metrics 1M;
+
+
+    upstream backend_server {
+        server ${BACKEND_SERVER_IP}:80;
+    }
+
+
+    init_worker_by_lua_block {
+        prometheus = require("prometheus").init("prometheus_metrics")
+
+        database_host = "${DB_HOST}"
+        database_name = "${DB_NAME}" 
+        db_username = "${DB_USERNAME}" 
+        db_password = "${DB_PASSWORD}"
+
+        metric_requests_api = prometheus:counter(
+            "requests_by_api_key", "Number of HTTP requests", {"api_key", "org", "chain", "status"}
+        )
+
+        metric_api_cache = prometheus:counter(
+            "cache_hits", "Number of calls with cached API key", {"state"}
+        )
+    }
+
+    server {
+        listen 80;
+        server_name gateway.${DOMAIN};
+
+        location ~ ^/api=(?<api_key>\w+)$ {
+            access_by_lua_block {
+                local function processInternalRequest(api_key, cached_value, org, new_uri)
+                    -- function to proxy requests returns response data
+                    ngx.req.read_body()  -- Ensure request body is read
+                    local body_data = ngx.req.get_body_data() or ""
+                    local method = ngx.HTTP_GET  -- Default to GET method if not recognized
+
+                    if ngx.var.request_method == "POST" then
+                        method = ngx.HTTP_POST
+                    elseif ngx.var.request_method == "PUT" then
+                        method = ngx.HTTP_PUT
+                    -- Add more method checks as needed (e.g., DELETE, PATCH, etc.)
+                    end
+
+                    local res = ngx.location.capture(new_uri, {
+                        method = method,
+                        body = body_data,
+                        headers = ngx.req.get_headers()
+                    })
+
+                    return res
+                end
+
+                local api_key_cache = ngx.shared.api_key_cache
+                local org_cache = ngx.shared.api_org_cache
+                local api_key = ngx.var.api_key
+
+                -- Check if we have a cache hit
+                local cached_value = api_key_cache:get(api_key)
+
+                if cached_value then
+                    -- API key is present in cache can proceed with the proxy
+                    local org = org_cache:get(api_key)
+                    local new_uri = "/" .. cached_value
+
+                    metric_api_cache:inc(1, {"hit"})
+                    ngx.req.set_uri(new_uri)
+
+                    local res = processInternalRequest(api_key, cached_value, org, new_uri)
+
+                    if res.status == 200 then
+                        metric_requests_api:inc(1, {api_key, org, cached_value, res.status})
+                        ngx.say(res.body)
+                        return ngx.exit(res.status)
+                    else
+                        metric_requests_api:inc(1, {api_key, org, cached_value, res.status})
+                        ngx.status = res.status
+                        ngx.say("Failed to proxy request with status: ", res.status)
+                        return ngx.exit(res.status)
+                    end
+                else
+                    -- API key is not in cache attempt to read it from the data base
+                    local mysql = require "luasql.mysql"
+                    local env = mysql.mysql()
+
+                    local conn, err = env:connect(database_name, db_username, db_password, database_host)
+
+                    if not conn then
+                        ngx.status = 500
+                       ngx.say("Host : ", database_host)
+                        ngx.say("Failed to connect to database: ", err)
+                        return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
+                    end
+
+                    local query = "SELECT * FROM API_KEYS WHERE `api_key` = '" .. api_key .. "'"
+                    local cursor = conn:execute(query)
+                    local row = cursor:fetch({}, "a")
+
+                    if row then
+                        -- API key is present in the database, cache it and proxy the request
+                        local chain = row.chain
+                        local org = row.org_name
+
+                        api_key_cache:set(api_key, chain, 3600)
+                        org_cache:set(api_key, org)
+
+                        local new_uri = "/" .. chain
+
+                        ngx.req.set_uri(new_uri)
+
+                        local res = processInternalRequest(api_key, chain, org, new_uri)
+
+                        if res.status == 200 then
+                            metric_requests_api:inc(1, {api_key, org, chain, res.status})
+                            ngx.say(res.body)
+                            return ngx.exit(res.status)
+                        else
+                            metric_requests_api:inc(1, {api_key, org, chain, res.status})
+                            ngx.status = res.status
+                            ngx.say("Failed to proxy request with status: ", res.status)
+                            return ngx.exit(res.status)
+                        end
+                    else
+                        -- API key is not in the database return a FORBIDDEN status and exit
+                        metric_api_cache:inc(1, {"invalid"})
+                        ngx.status = 403
+                        ngx.say("Invalid API key")
+                        return ngx.exit(ngx.HTTP_FORBIDDEN)
+                    end
+
+                    cursor:close()
+                    conn:close()
+                    env:close()
+                end
+            }
+        }
+
+        location /eth {
+            # Allow access only from internal IP addresses
+			allow 10.0.0.0/8;
+			allow 192.168.0.0/16;
+			deny all;    
+			proxy_pass http://backend_server;
+
+            # Proxy settings (customize based on your requirements)
+            proxy_set_header Host ${DOLLAR}host;
+            proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+            proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
+        }
+
+        location /polygon {
+            # Allow access only from internal IP addresses
+			allow 10.0.0.0/8;
+			allow 192.168.0.0/16;
+			deny all;    
+			proxy_pass http://backend_server;
+
+            # Proxy settings (customize based on your requirements)
+            proxy_set_header Host ${DOLLAR}host;
+            proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+            proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
+        }
+
+        location /fuse {
+            # Allow access only from internal IP addresses
+			allow 10.0.0.0/8;
+			allow 192.168.0.0/16;
+			deny all;    
+			proxy_pass http://backend_server;
+
+            # Proxy settings (customize based on your requirements)
+            proxy_set_header Host ${DOLLAR}host;
+            proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+            proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
+        }
+
+		location /solana {
+            # Allow access only from internal IP addresses
+			allow 10.0.0.0/8;
+			allow 192.168.0.0/16;
+			deny all;    
+			proxy_pass http://backend_server;
+
+            # Proxy settings (customize based on your requirements)
+            proxy_set_header Host ${DOLLAR}host;
+            proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+            proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
+        }
+
+		location /bsc {
+            # Allow access only from internal IP addresses
+			allow 10.0.0.0/8;
+			allow 192.168.0.0/16;
+			deny all;    
+			proxy_pass http://backend_server;
+
+            # Proxy settings (customize based on your requirements)
+            proxy_set_header Host ${DOLLAR}host;
+            proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+            proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
+        }
+
+		location /base {
+            # Allow access only from internal IP addresses
+			allow 10.0.0.0/8;
+			allow 192.168.0.0/16;
+			deny all;    
+			proxy_pass http://backend_server;
+
+            # Proxy settings (customize based on your requirements)
+            proxy_set_header Host ${DOLLAR}host;
+            proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+            proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
+        }
+
+		location /arb {
+            # Allow access only from internal IP addresses
+			allow 10.0.0.0/8;
+			allow 192.168.0.0/16;
+			deny all;    
+			proxy_pass http://backend_server;
+
+            # Proxy settings (customize based on your requirements)
+            proxy_set_header Host ${DOLLAR}host;
+            proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+            proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
+        }
+
+		location /dfk {
+            # Allow access only from internal IP addresses
+			allow 10.0.0.0/8;
+			allow 192.168.0.0/16;
+			deny all;    
+			proxy_pass http://backend_server;
+
+			# Proxy settings (customize based on your requirements)
+			proxy_set_header Host ${DOLLAR}host;
+			proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+			proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+			proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
+        }
+
+        location /klaytn {
+			# Allow access only from internal IP addresses
+			allow 10.0.0.0/8;
+			allow 192.168.0.0/16;
+			deny all;    
+			proxy_pass http://backend_server;
+
+            # Proxy settings (customize based on your requirements)
+            proxy_set_header Host ${DOLLAR}host;
+            proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+            proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
+        }
+    }
+	
+	server {
+        listen 9100;
+		location /metrics {
+            content_by_lua_block {
+                prometheus:collect()
+            }
+        }
+	}
+}
