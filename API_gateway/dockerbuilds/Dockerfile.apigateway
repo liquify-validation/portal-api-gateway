@@ -6,7 +6,7 @@
 
 FROM liquifyltd/openresty:bionic
 
-LABEL maintainer="Evan Wies <contact@liquify.io>"
+LABEL maintainer="Andy Pohl <contact@liquify.io>"
 
 ARG RESTY_LUAROCKS_VERSION="3.9.2"
 
