@@ -87,7 +87,7 @@ http {
                     else
                         metric_requests_api:inc(1, {api_key, org, org_id, cached_value, res.status})
                         ngx.status = res.status
-                        ngx.say("Failed to proxy request with status: ", res.status)
+                        -- ngx.say("Failed to proxy request with status: ", res.status)
                         return ngx.exit(res.status)
                     end
                 else
@@ -99,8 +99,8 @@ http {
 
                     if not conn then
                         ngx.status = 500
-                        ngx.say("Host : ", database_host)
-                        ngx.say("Failed to connect to database: ", err)
+                        -- ngx.say("Host : ", database_host)
+                        -- ngx.say("Failed to connect to database: ", err)
                         return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
                     end
 
@@ -132,7 +132,7 @@ http {
                         else
                             metric_requests_api:inc(1, {api_key, org, org_id, chain, res.status})
                             ngx.status = res.status
-                            ngx.say("Failed to proxy request with status: ", res.status)
+                            -- ngx.say("Failed to proxy request with status: ", res.status)
                             return ngx.exit(res.status)
                         end
                     else
