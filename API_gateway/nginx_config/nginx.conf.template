@@ -7,6 +7,7 @@ events {
 http {
     lua_shared_dict api_key_cache 10m;
     lua_shared_dict api_org_cache 10m;
+    lua_shared_dict api_org_id_cache 10m;
     lua_shared_dict prometheus_metrics 1M;
 
 
@@ -24,7 +25,7 @@ http {
         db_password = "${DB_PASSWORD}"
 
         metric_requests_api = prometheus:counter(
-            "requests_by_api_key", "Number of HTTP requests", {"api_key", "org", "chain", "status"}
+            "requests_by_api_key", "Number of HTTP requests", {"api_key", "org", "org_id", "chain", "status"}
         )
 
         metric_api_cache = prometheus:counter(
@@ -39,7 +40,7 @@ http {
         location ~ ^/api=(?<api_key>\w+)$ {
             access_by_lua_block {
                 local function processInternalRequest(api_key, cached_value, org, new_uri)
-                    -- function to proxy requests returns response data
+                                        -- function to proxy requests returns response data
                     ngx.req.read_body()  -- Ensure request body is read
                     local body_data = ngx.req.get_body_data() or ""
                     local method = ngx.HTTP_GET  -- Default to GET method if not recognized
@@ -62,14 +63,16 @@ http {
 
                 local api_key_cache = ngx.shared.api_key_cache
                 local org_cache = ngx.shared.api_org_cache
+                local org_id_cache = ngx.shared.api_org_id_cache
                 local api_key = ngx.var.api_key
 
-                -- Check if we have a cache hit
+                                -- Check if we have a cache hit
                 local cached_value = api_key_cache:get(api_key)
 
                 if cached_value then
-                    -- API key is present in cache can proceed with the proxy
+                                        -- API key is present in cache can proceed with the proxy
                     local org = org_cache:get(api_key)
+                    local org_id = org_id_cache:get(api_key)
                     local new_uri = "/" .. cached_value
 
                     metric_api_cache:inc(1, {"hit"})
@@ -78,11 +81,11 @@ http {
                     local res = processInternalRequest(api_key, cached_value, org, new_uri)
 
                     if res.status == 200 then
-                        metric_requests_api:inc(1, {api_key, org, cached_value, res.status})
+                        metric_requests_api:inc(1, {api_key, org, org_id, cached_value, res.status})
                         ngx.say(res.body)
                         return ngx.exit(res.status)
                     else
-                        metric_requests_api:inc(1, {api_key, org, cached_value, res.status})
+                        metric_requests_api:inc(1, {api_key, org, org_id, cached_value, res.status})
                         ngx.status = res.status
                         ngx.say("Failed to proxy request with status: ", res.status)
                         return ngx.exit(res.status)
@@ -96,22 +99,25 @@ http {
 
                     if not conn then
                         ngx.status = 500
-                       ngx.say("Host : ", database_host)
+                        ngx.say("Host : ", database_host)
                         ngx.say("Failed to connect to database: ", err)
                         return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
                     end
 
-                    local query = "SELECT * FROM API_KEYS WHERE `api_key` = '" .. api_key .. "'"
+                    local escaped_api_key = ngx.quote_sql_str(api_key)
+                    local query = string.format("SELECT * FROM api_keys WHERE `api_key` = %s", escaped_api_key)
                     local cursor = conn:execute(query)
                     local row = cursor:fetch({}, "a")
 
                     if row then
-                        -- API key is present in the database, cache it and proxy the request
-                        local chain = row.chain
+                                                -- API key is present in the database, cache it and proxy the request
+                        local chain = row.chain_name
                         local org = row.org_name
+                        local org_id = row.org_id
 
                         api_key_cache:set(api_key, chain, 3600)
                         org_cache:set(api_key, org)
+                        org_id_cache:set(api_key,org_id)
 
                         local new_uri = "/" .. chain
 
@@ -120,11 +126,11 @@ http {
                         local res = processInternalRequest(api_key, chain, org, new_uri)
 
                         if res.status == 200 then
-                            metric_requests_api:inc(1, {api_key, org, chain, res.status})
+                            metric_requests_api:inc(1, {api_key, org, org_id, chain, res.status})
                             ngx.say(res.body)
                             return ngx.exit(res.status)
                         else
-                            metric_requests_api:inc(1, {api_key, org, chain, res.status})
+                            metric_requests_api:inc(1, {api_key, org, org_id, chain, res.status})
                             ngx.status = res.status
                             ngx.say("Failed to proxy request with status: ", res.status)
                             return ngx.exit(res.status)
