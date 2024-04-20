@@ -9,6 +9,7 @@ http {
     lua_shared_dict api_org_cache 10m;
     lua_shared_dict api_org_id_cache 10m;
     lua_shared_dict prometheus_metrics 1M;
+    lua_shared_dict api_daily_count 10m;
 
 
     upstream backend_server {
@@ -40,7 +41,7 @@ http {
         location ~ ^/api=(?<api_key>\w+)$ {
             access_by_lua_block {
                 local function processInternalRequest(api_key, cached_value, org, new_uri)
-                                        -- function to proxy requests returns response data
+                    -- function to proxy requests returns response data
                     ngx.req.read_body()  -- Ensure request body is read
                     local body_data = ngx.req.get_body_data() or ""
                     local method = ngx.HTTP_GET  -- Default to GET method if not recognized
@@ -65,8 +66,10 @@ http {
                 local org_cache = ngx.shared.api_org_cache
                 local org_id_cache = ngx.shared.api_org_id_cache
                 local api_key = ngx.var.api_key
+                local api_daily_count = ngx.shared.api_daily_count
+                local limit_per_day = ${RATE_LIMIT}
 
-                                -- Check if we have a cache hit
+                -- Check if we have a cache hit
                 local cached_value = api_key_cache:get(api_key)
 
                 if cached_value then
@@ -74,6 +77,17 @@ http {
                     local org = org_cache:get(api_key)
                     local org_id = org_id_cache:get(api_key)
                     local new_uri = "/" .. cached_value
+
+                    if limit_per_day != 0 then
+                        local current_count, err = api_daily_count:incr(api_key, 1, 0, 1 * 60 * 60 * 24)
+
+                        -- Check if the limit has been exceeded
+                        if current_count > limit_per_day then
+                                ngx.status = ngx.HTTP_TOO_MANY_REQUESTS
+                                ngx.say("Daily rate limit exceeded for this API key")
+                                ngx.exit(ngx.status)
+                        end
+
 
                     metric_api_cache:inc(1, {"hit"})
                     ngx.req.set_uri(new_uri)
@@ -152,10 +166,10 @@ http {
 
         location /eth {
             # Allow access only from internal IP addresses
-			allow 10.0.0.0/8;
-			allow 192.168.0.0/16;
-			deny all;    
-			proxy_pass http://backend_server;
+            allow 10.0.0.0/8;
+            allow 192.168.0.0/16;
+            deny all;    
+            proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
             proxy_set_header Host ${DOLLAR}host;
@@ -166,10 +180,10 @@ http {
 
         location /polygon {
             # Allow access only from internal IP addresses
-			allow 10.0.0.0/8;
-			allow 192.168.0.0/16;
-			deny all;    
-			proxy_pass http://backend_server;
+            allow 10.0.0.0/8;
+            allow 192.168.0.0/16;
+            deny all;    
+            proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
             proxy_set_header Host ${DOLLAR}host;
@@ -180,10 +194,10 @@ http {
 
         location /fuse {
             # Allow access only from internal IP addresses
-			allow 10.0.0.0/8;
-			allow 192.168.0.0/16;
-			deny all;    
-			proxy_pass http://backend_server;
+            allow 10.0.0.0/8;
+            allow 192.168.0.0/16;
+            deny all;    
+            proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
             proxy_set_header Host ${DOLLAR}host;
@@ -192,12 +206,12 @@ http {
             proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
         }
 
-		location /solana {
+        location /solana {
             # Allow access only from internal IP addresses
-			allow 10.0.0.0/8;
-			allow 192.168.0.0/16;
-			deny all;    
-			proxy_pass http://backend_server;
+            allow 10.0.0.0/8;
+            allow 192.168.0.0/16;
+            deny all;    
+            proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
             proxy_set_header Host ${DOLLAR}host;
@@ -206,12 +220,12 @@ http {
             proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
         }
 
-		location /bsc {
+        location /bsc {
             # Allow access only from internal IP addresses
-			allow 10.0.0.0/8;
-			allow 192.168.0.0/16;
-			deny all;    
-			proxy_pass http://backend_server;
+            allow 10.0.0.0/8;
+            allow 192.168.0.0/16;
+            deny all;    
+            proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
             proxy_set_header Host ${DOLLAR}host;
@@ -220,12 +234,12 @@ http {
             proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
         }
 
-		location /base {
+        location /base {
             # Allow access only from internal IP addresses
-			allow 10.0.0.0/8;
-			allow 192.168.0.0/16;
-			deny all;    
-			proxy_pass http://backend_server;
+            allow 10.0.0.0/8;
+            allow 192.168.0.0/16;
+            deny all;    
+            proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
             proxy_set_header Host ${DOLLAR}host;
@@ -234,12 +248,12 @@ http {
             proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
         }
 
-		location /arb {
+        location /arb {
             # Allow access only from internal IP addresses
-			allow 10.0.0.0/8;
-			allow 192.168.0.0/16;
-			deny all;    
-			proxy_pass http://backend_server;
+            allow 10.0.0.0/8;
+            allow 192.168.0.0/16;
+            deny all;    
+            proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
             proxy_set_header Host ${DOLLAR}host;
@@ -248,26 +262,26 @@ http {
             proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
         }
 
-		location /dfk {
+        location /dfk {
             # Allow access only from internal IP addresses
-			allow 10.0.0.0/8;
-			allow 192.168.0.0/16;
-			deny all;    
-			proxy_pass http://backend_server;
+            allow 10.0.0.0/8;
+            allow 192.168.0.0/16;
+            deny all;    
+            proxy_pass http://backend_server;
 
-			# Proxy settings (customize based on your requirements)
-			proxy_set_header Host ${DOLLAR}host;
-			proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
-			proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
-			proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
+            # Proxy settings (customize based on your requirements)
+            proxy_set_header Host ${DOLLAR}host;
+            proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+            proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
         }
 
         location /klaytn {
-			# Allow access only from internal IP addresses
-			allow 10.0.0.0/8;
-			allow 192.168.0.0/16;
-			deny all;    
-			proxy_pass http://backend_server;
+            # Allow access only from internal IP addresses
+            allow 10.0.0.0/8;
+            allow 192.168.0.0/16;
+            deny all;    
+            proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
             proxy_set_header Host ${DOLLAR}host;
@@ -279,7 +293,7 @@ http {
 	
 	server {
         listen 9100;
-		location /metrics {
+        location /metrics {
             content_by_lua_block {
                 prometheus:collect()
             }
