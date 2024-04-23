@@ -78,7 +78,7 @@ http {
                     local org_id = org_id_cache:get(api_key)
                     local new_uri = "/" .. cached_value
 
-                    if limit_per_day != 0 then
+                    if limit_per_day ~= 0 then
                         local current_count, err = api_daily_count:incr(api_key, 1, 0, 1 * 60 * 60 * 24)
 
                         -- Check if the limit has been exceeded
@@ -88,7 +88,6 @@ http {
                                 ngx.exit(ngx.status)
                         end
 
-
                     metric_api_cache:inc(1, {"hit"})
                     ngx.req.set_uri(new_uri)
 
@@ -96,8 +95,14 @@ http {
 
                     if res.status == 200 then
                         metric_requests_api:inc(1, {api_key, org, org_id, cached_value, res.status})
-                        ngx.say(res.body)
-                        return ngx.exit(res.status)
+                        ngx.status = res.status
+                        for key, value in pairs(res.header) do
+                            ngx.header[key] = value  -- Set response headers from captured response
+                        end
+
+                        -- Output the captured response body directly to the client
+                        ngx.print(res.body)
+                        return ngx.exit(ngx.status)
                     else
                         metric_requests_api:inc(1, {api_key, org, org_id, cached_value, res.status})
                         ngx.status = res.status
@@ -141,8 +146,14 @@ http {
 
                         if res.status == 200 then
                             metric_requests_api:inc(1, {api_key, org, org_id, chain, res.status})
-                            ngx.say(res.body)
-                            return ngx.exit(res.status)
+                            ngx.status = res.status
+                            for key, value in pairs(res.header) do
+                                ngx.header[key] = value  -- Set response headers from captured response
+                            end
+
+                            -- Output the captured response body directly to the client
+                            ngx.print(res.body)
+                            return ngx.exit(ngx.status)
                         else
                             metric_requests_api:inc(1, {api_key, org, org_id, chain, res.status})
                             ngx.status = res.status
