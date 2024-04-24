@@ -13,7 +13,7 @@ http {
 
 
     upstream backend_server {
-        server ${BACKEND_SERVER_IP}:80;
+        server ${BACKEND_SERVER_IP}:${BACKEND_SERVER_PORT};
     }
 
 
@@ -179,7 +179,8 @@ http {
             # Allow access only from internal IP addresses
             allow 10.0.0.0/8;
             allow 192.168.0.0/16;
-            deny all;    
+            deny all;
+            rewrite ^/eth(.*) /relay/0021${DOLLAR}1 break;    
             proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
@@ -193,7 +194,8 @@ http {
             # Allow access only from internal IP addresses
             allow 10.0.0.0/8;
             allow 192.168.0.0/16;
-            deny all;    
+            deny all;
+            rewrite ^/polygon(.*) /relay/0009${DOLLAR}1 break;    
             proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
@@ -207,7 +209,8 @@ http {
             # Allow access only from internal IP addresses
             allow 10.0.0.0/8;
             allow 192.168.0.0/16;
-            deny all;    
+            deny all;
+            rewrite ^/fuse(.*) /relay/0005${DOLLAR}1 break;      
             proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
@@ -221,7 +224,8 @@ http {
             # Allow access only from internal IP addresses
             allow 10.0.0.0/8;
             allow 192.168.0.0/16;
-            deny all;    
+            deny all;
+            rewrite ^/solana(.*) /relay/C006${DOLLAR}1 break;      
             proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
@@ -235,7 +239,8 @@ http {
             # Allow access only from internal IP addresses
             allow 10.0.0.0/8;
             allow 192.168.0.0/16;
-            deny all;    
+            deny all;
+            rewrite ^/bsc(.*) /relay/0004${DOLLAR}1 break;    
             proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
@@ -249,7 +254,8 @@ http {
             # Allow access only from internal IP addresses
             allow 10.0.0.0/8;
             allow 192.168.0.0/16;
-            deny all;    
+            deny all;
+            rewrite ^/base(.*) /relay/0079${DOLLAR}1 break;    
             proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
@@ -263,7 +269,8 @@ http {
             # Allow access only from internal IP addresses
             allow 10.0.0.0/8;
             allow 192.168.0.0/16;
-            deny all;    
+            deny all;
+            rewrite ^/arb(.*) /relay/0066${DOLLAR}1 break;    
             proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
@@ -277,7 +284,8 @@ http {
             # Allow access only from internal IP addresses
             allow 10.0.0.0/8;
             allow 192.168.0.0/16;
-            deny all;    
+            deny all;
+            rewrite ^/dfk(.*) /relay/03DF${DOLLAR}1 break;    
             proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
@@ -291,7 +299,23 @@ http {
             # Allow access only from internal IP addresses
             allow 10.0.0.0/8;
             allow 192.168.0.0/16;
-            deny all;    
+            deny all;
+            rewrite ^/klaytn(.*) /relay/0056${DOLLAR}1 break;     
+            proxy_pass http://backend_server;
+
+            # Proxy settings (customize based on your requirements)
+            proxy_set_header Host ${DOLLAR}host;
+            proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+            proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
+        }
+
+        location /near {
+            # Allow access only from internal IP addresses
+            allow 10.0.0.0/8;
+            allow 192.168.0.0/16;
+            deny all;
+            rewrite ^/near(.*) /relay/00052${DOLLAR}1 break;     
             proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
