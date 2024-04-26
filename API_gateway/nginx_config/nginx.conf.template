@@ -82,9 +82,10 @@ http {
 
                     if limit_per_day ~= 0 then
                         local current_count, err = api_daily_count:incr(api_key, 1, 0, 1 * 60 * 60 * 24)
-
                         -- Check if the limit has been exceeded
                         if current_count > limit_per_day then
+                                -- expire the main cache so it can be reassed
+                                api_key_cache:expire(api_key)
                                 ngx.status = ngx.HTTP_TOO_MANY_REQUESTS
                                 ngx.say("Daily rate limit exceeded for this API key")
                                 ngx.exit(ngx.status)
@@ -141,6 +142,16 @@ http {
                         org_cache:set(api_key, org)
                         org_id_cache:set(api_key,org_id)
                         api_rate_limit:set(api_key, limit)
+
+                        usage = api_daily_count:get(api_key)
+                        if usage ~= nil then
+                            -- don't inc the counter here just assess if it is now below the limit (the limit could have been adjusted)
+                            if usage > limit then
+                                ngx.status = ngx.HTTP_TOO_MANY_REQUESTS
+                                ngx.say("Daily rate limit exceeded for this API key")
+                                ngx.exit(ngx.status)
+                            end
+                        end
 
                         local new_uri = "/" .. chain
 
