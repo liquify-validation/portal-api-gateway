@@ -10,6 +10,7 @@ http {
     lua_shared_dict api_org_id_cache 10m;
     lua_shared_dict prometheus_metrics 1M;
     lua_shared_dict api_daily_count 10m;
+    lua_shared_dict api_rate_limit 10m;
 
 
     upstream backend_server {
@@ -67,16 +68,17 @@ http {
                 local org_id_cache = ngx.shared.api_org_id_cache
                 local api_key = ngx.var.api_key
                 local api_daily_count = ngx.shared.api_daily_count
-                local limit_per_day = ${RATE_LIMIT}
+                local api_rate_limit = ngx.shared.api_rate_limit
 
                 -- Check if we have a cache hit
                 local cached_value = api_key_cache:get(api_key)
 
                 if cached_value then
-                                        -- API key is present in cache can proceed with the proxy
+                    -- API key is present in cache can proceed with the proxy
                     local org = org_cache:get(api_key)
                     local org_id = org_id_cache:get(api_key)
                     local new_uri = "/" .. cached_value
+                    local limit_per_day = api_rate_limit:get(api_key)
 
                     if limit_per_day ~= 0 then
                         local current_count, err = api_daily_count:incr(api_key, 1, 0, 1 * 60 * 60 * 24)
@@ -129,14 +131,16 @@ http {
                     local row = cursor:fetch({}, "a")
 
                     if row then
-                                                -- API key is present in the database, cache it and proxy the request
+                        -- API key is present in the database, cache it and proxy the request
                         local chain = row.chain_name
                         local org = row.org_name
                         local org_id = row.org_id
+                        local limit = row.limit
 
                         api_key_cache:set(api_key, chain, 3600)
                         org_cache:set(api_key, org)
                         org_id_cache:set(api_key,org_id)
+                        api_rate_limit:set(api_key, limit)
 
                         local new_uri = "/" .. chain
 
@@ -315,7 +319,7 @@ http {
             allow 10.0.0.0/8;
             allow 192.168.0.0/16;
             deny all;
-            rewrite ^/near(.*) /relay/00052${DOLLAR}1 break;     
+            rewrite ^/near(.*) /relay/0052${DOLLAR}1 break;     
             proxy_pass http://backend_server;
 
             # Proxy settings (customize based on your requirements)
