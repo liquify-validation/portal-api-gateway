@@ -32,7 +32,6 @@ var chainMap = map[string]string{
         "klaytn":  "0056",
 }
 
-var db *sql.DB
 var apiCache *cache.Cache
 
 type APIUsage struct {
@@ -148,14 +147,6 @@ func main() {
 
         apiCache = cache.New(1*time.Hour, 1*time.Hour)
 
-        // Open database connection
-        var err error
-        db, err = sql.Open("mysql", dbUser+":"+dbPassword+"@tcp("+dbHost+":"+dbPort+")/"+dbDatabaseName)
-        if err != nil {
-                log.Fatal(err)
-        }
-        defer db.Close()
-
         // Initialize request handler
         requestHandler := func(ctx *fasthttp.RequestCtx) {
                 // Extract API key from query string
@@ -186,6 +177,7 @@ func main() {
                                         }
                                         proxyRequest(ctx, &ctx.Request, proxyHost, proxyPort, keyData["chain"].(string))
                                         metricRequestsAPI.WithLabelValues(apiKey, keyData["org"].(string), keyData["org_id"].(string), keyData["chain"].(string), strconv.Itoa(ctx.Response.StatusCode())).Inc()
+                                        metricAPICache.WithLabelValues("HIT").Inc()
                                         return
                                 } else {
                                         log.Println("Type assertion failed for limit")
@@ -200,6 +192,12 @@ func main() {
                 // Check if API key exists in database
                 var chain, org string
                 var limit, orgID int
+                db, err := sql.Open("mysql", dbUser+":"+dbPassword+"@tcp("+dbHost+":"+dbPort+")/"+dbDatabaseName)
+                if err != nil {
+                    log.Fatalf("Error opening database connection: %s", err)
+                }
+                defer db.Close()
+
                 stmt, err := db.Prepare("SELECT chain_name, org_name, `limit`, org_id FROM api_keys WHERE api_key = ?")
                 if err != nil {
                     log.Fatal(err)
@@ -210,6 +208,7 @@ func main() {
                 if err != nil {
                         if err == sql.ErrNoRows {
                                 ctx.Error("Invalid API key", fasthttp.StatusForbidden)
+                                metricAPICache.WithLabelValues("INVALID").Inc()
                         } else {
                                 ctx.Error("Internal server error", fasthttp.StatusInternalServerError)
                         }
@@ -231,6 +230,7 @@ func main() {
                 proxyRequest(ctx, &ctx.Request, proxyHost, proxyPort, chain)
                 // Increment API requests metric
                 metricRequestsAPI.WithLabelValues(apiKey, org, strconv.Itoa(orgID), chain, strconv.Itoa(ctx.Response.StatusCode())).Inc()
+                metricAPICache.WithLabelValues("MISS").Inc()
         }
 
         // Start FastHTTP server
