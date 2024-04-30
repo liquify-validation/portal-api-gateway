@@ -81,11 +81,11 @@ func getUsage(apiKey string) *APIUsage {
 
 func setUsage(apiKey string, usage *APIUsage, expire bool) {
         // Update the entry in the cache
-		if expire {
-        	usageCache.Set(apiKey, usage, 24*time.Hour)
-		} else {
-			usageCache.Set(apiKey, usage, cache.DefaultExpiration)
-		}
+        if expire {
+            usageCache.Set(apiKey, usage, 24*time.Hour)
+        } else {
+            usageCache.Set(apiKey, usage, cache.DefaultExpiration)
+        }
 }
 
 func getUsageMutex(apiKey string) *sync.Mutex {
@@ -102,17 +102,17 @@ func incrementAPIUsage(apiKey string, limit int) bool {
         usageMutex.Lock()
         defer usageMutex.Unlock()
 
-		expire := false
+        expire := false
         // Load the usage for the API key
         usage := getUsage(apiKey)
         if usage == nil {
                 // Initialize usage if not found
                 usage = &APIUsage{Count: 1, LastUpdate: time.Now()}
-				expire = true
+                expire = true
         } else {
                 // Increment the usage count
                 usage.Count++
-				expire = false
+                expire = false
         }
 
         if usage.Count > int64(limit) {
