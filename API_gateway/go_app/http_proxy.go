@@ -94,167 +94,205 @@ func getUsageMutex(apiKey string) *sync.Mutex {
 }
 
 func incrementAPIUsage(apiKey string, limit int) bool {
-        // Retrieve the mutex for the specified API key
-        usageMutex := getUsageMutex(apiKey)
+    // Retrieve the mutex for the specified API key
+    usageMutex := getUsageMutex(apiKey)
 
-        // Lock the mutex to ensure exclusive access to the usage value for this API key
-        usageMutex.Lock()
-        defer usageMutex.Unlock()
+    // Lock the mutex to ensure exclusive access to the usage value for this API key
+    usageMutex.Lock()
+    defer usageMutex.Unlock()
 
-        expire := false
-        // Load the usage for the API key
-        usage := getUsage(apiKey)
-        if usage == nil {
-                // Initialize usage if not found
-                usage = &APIUsage{Count: 1, LastUpdate: time.Now()}
-                expire = true
-        } else {
-                // Increment the usage count
-                usage.Count++
-                expire = false
+    // Load the usage for the API key
+    usage := getUsage(apiKey)
+    if usage == nil {
+        // Initialize usage if not found
+        usage = &APIUsage{Count: 1, LastUpdate: time.Now()}
+    } else {
+        // Increment the usage count
+        if usage.Count >= int64(limit) {
+            return false
         }
+        usage.Count++
+    }
 
-        if usage.Count > int64(limit) {
-                return false
-        }
-
-        log.Printf("API key = %s", usage)
-
-        // Update the entry in the cache
-        setUsage(apiKey, usage, expire)
-        return true
+    // Update the entry in the cache
+    setUsage(apiKey, usage, usage.Count == 1) // If count was 1, then it's an initialization
+    return true
 }
 
 func main() {
-        errEnv := godotenv.Load()
-        if errEnv != nil {
-                log.Fatalf("Error loading .env file: %s", errEnv)
+    // Load environment variables from .env file
+    errEnv := godotenv.Load()
+    if errEnv != nil {
+        log.Fatalf("Error loading .env file: %s", errEnv)
+    }
+
+    // Initialize Prometheus metrics
+    initPrometheusMetrics()
+
+    // Initialize API cache
+    apiCache = cache.New(1*time.Hour, 1*time.Hour)
+
+    // Start FastHTTP server to handle requests
+    go startFastHTTPServer()
+
+    // Expose Prometheus metrics endpoint
+    startPrometheusServer()
+
+    // Wait indefinitely
+    select {}
+}
+
+// initPrometheusMetrics initializes Prometheus metrics
+func initPrometheusMetrics() {
+    prometheus.MustRegister(metricRequestsAPI)
+    prometheus.MustRegister(metricAPICache)
+    prometheus.MustRegister(requestsTotal)
+}
+
+// startFastHTTPServer starts the FastHTTP server
+func startFastHTTPServer() {
+    errEnv := godotenv.Load()
+    if errEnv != nil {
+            log.Fatalf("Error loading .env file: %s", errEnv)
+    }
+
+    // Retrieve environment variables
+    dbPassword := os.Getenv("DB_PASSWORD")
+    dbUser := os.Getenv("DB_USER")
+    dbHost := os.Getenv("DB_HOST")
+    dbPort := os.Getenv("DB_PORT")
+    dbDatabaseName := os.Getenv("DB_NAME")
+    proxyHost := os.Getenv("PROXY_HOST")
+    proxyPort := os.Getenv("PROXY_PORT")
+    
+    // Define the request handler function
+    requestHandler := func(ctx *fasthttp.RequestCtx) {
+        apiKey, path ,err := extractAPIKeyAndPath(ctx)
+        if err != nil {
+            log.Fatalf(path)
+            ctx.Error("Forbidden", fasthttp.StatusForbidden)
+            return
         }
 
-        // Retrieve environment variables
-        dbPassword := os.Getenv("DB_PASSWORD")
-        dbUser := os.Getenv("DB_USER")
-        dbHost := os.Getenv("DB_HOST")
-        dbPort := os.Getenv("DB_PORT")
-        dbDatabaseName := os.Getenv("DB_NAME")
-        proxyHost := os.Getenv("PROXY_HOST")
-        proxyPort := os.Getenv("PROXY_PORT")
+        // Check if API key exists in cache
+        if cacheEntry, found := apiCache.Get(apiKey); found {
+            handleCachedAPIKey(ctx, apiKey, cacheEntry.(map[string]interface{}), proxyHost, proxyPort)
+            return
+        }
 
-        // Register custom Prometheus metrics
-        prometheus.MustRegister(metricRequestsAPI)
-        prometheus.MustRegister(metricAPICache)
-        prometheus.MustRegister(requestsTotal)
+        // Handle API key not found in cache
+        handleAPIKeyNotFound(ctx, apiKey, proxyHost, proxyPort, dbUser, dbPassword, dbHost, dbPort, dbDatabaseName)
+    }
 
-        apiCache = cache.New(1*time.Hour, 1*time.Hour)
+    // Start the FastHTTP server on port 80
+    if err := fasthttp.ListenAndServe(":80", requestHandler); err != nil {
+        log.Fatalf("Error in ListenAndServe: %s", err)
+    }
+}
 
-        // Initialize request handler
-        requestHandler := func(ctx *fasthttp.RequestCtx) {
-                // Extract API key from query string
-                uri := string(ctx.RequestURI())
-                parsedURI, errT := url.Parse(uri)
-                if errT != nil {
-                        // Handle error
-                        return
-                }
-                path := parsedURI.Path
+// startPrometheusServer starts the Prometheus metrics server
+func startPrometheusServer() {
+    http.Handle("/metrics", promhttp.Handler())
+    if err := http.ListenAndServe(":9100", nil); err != nil {
+        log.Fatalf("Error starting Prometheus server: %s", err)
+    }
+}
 
-                apiKey := extractAPIKey(path)
-                if apiKey == "" {
-                        ctx.Error("Forbidden", fasthttp.StatusForbidden)
-                        return
-                }
+// extractAPIKeyAndPath extracts API key and path from request URI
+func extractAPIKeyAndPath(ctx *fasthttp.RequestCtx) (string, string, error) {
+    uri := string(ctx.RequestURI())
+    parsedURI, err := url.Parse(uri)
+    if err != nil {
+        return "", "", err
+    }
+    path := parsedURI.Path
+    apiKey := extractAPIKey(path)
+    return apiKey, path, nil
+}
 
-                log.Printf("API key = ", apiKey)
+// handleCachedAPIKey handles requests with cached API key
+func handleCachedAPIKey(ctx *fasthttp.RequestCtx, apiKey string, keyData map[string]interface{}, proxyHost string, proxyPort string) {
+    // Check if all required keys exist in the keyData map
+    requiredKeys := []string{"limit", "chain", "org", "org_id"}
+    for _, key := range requiredKeys {
+        if _, ok := keyData[key]; !ok {
+            log.Printf("Key '%s' not found in keyData", key)
+            return
+        }
+    }
 
-                // Check if API key exists in cache
-                if cacheEntry, found := apiCache.Get(apiKey); found {
-                        if keyData, ok := cacheEntry.(map[string]interface{}); ok {
-                                if limit, ok := keyData["limit"].(int); ok {
-                                        if !incrementAPIUsage(apiKey, limit) {
-                                                apiCache.Delete(apiKey)
-                                                ctx.Error("Slow down you have hit your daily request limit", fasthttp.StatusTooManyRequests)
-                                                return
-                                        }
-                                        proxyRequest(ctx, &ctx.Request, proxyHost, proxyPort, keyData["chain"].(string))
-                                        metricRequestsAPI.WithLabelValues(apiKey, keyData["org"].(string), keyData["org_id"].(string), keyData["chain"].(string), strconv.Itoa(ctx.Response.StatusCode())).Inc()
-                                        metricAPICache.WithLabelValues("HIT").Inc()
-                                        return
-                                } else {
-                                        log.Println("Type assertion failed for limit")
-                                        return
-                                }
-                        } else {
-                                log.Println("Type assertion failed for cache entry")
-                                return
-                        }
-                }
+    // Convert the "limit" value to an int
+    limit, ok := keyData["limit"].(int)
+    if !ok {
+        log.Println("Value associated with 'limit' key is not of type int")
+        return
+    }
 
-                // Check if API key exists in database
-                var chain, org string
-                var limit, orgID int
-                db, err := sql.Open("mysql", dbUser+":"+dbPassword+"@tcp("+dbHost+":"+dbPort+")/"+dbDatabaseName)
+    // Proceed with the request handling
+    if !incrementAPIUsage(apiKey, limit) {
+        apiCache.Delete(apiKey)
+        ctx.Error("Slow down you have hit your daily request limit", fasthttp.StatusTooManyRequests)
+        return
+    }
+
+    proxyRequest(ctx, &ctx.Request, proxyHost, proxyPort, keyData["chain"].(string))
+    metricRequestsAPI.WithLabelValues(apiKey, keyData["org"].(string), keyData["org_id"].(string), keyData["chain"].(string), strconv.Itoa(ctx.Response.StatusCode())).Inc()
+    metricAPICache.WithLabelValues("HIT").Inc()
+}
+
+// handleAPIKeyNotFound handles requests with API key not found
+func handleAPIKeyNotFound(ctx *fasthttp.RequestCtx, apiKey string, proxyHost string, proxyPort string, dbUser string, dbPassword string, dbHost string, dbPort string, dbDatabaseName string) {
+
+        db, err := sql.Open("mysql", dbUser+":"+dbPassword+"@tcp("+dbHost+":"+dbPort+")/"+dbDatabaseName)
                 if err != nil {
                     log.Fatalf("Error opening database connection: %s", err)
                 }
                 defer db.Close()
 
-                stmt, err := db.Prepare("SELECT chain_name, org_name, `limit`, org_id FROM api_keys WHERE api_key = ?")
-                if err != nil {
-                    log.Fatal(err)
-                }
-                defer stmt.Close()
-                row := stmt.QueryRow(apiKey)
-                err = row.Scan(&chain, &org, &limit, &orgID)
-                if err != nil {
-                        if err == sql.ErrNoRows {
-                                ctx.Error("Invalid API key", fasthttp.StatusForbidden)
-                                metricAPICache.WithLabelValues("INVALID").Inc()
-                        } else {
-                                ctx.Error("Internal server error", fasthttp.StatusInternalServerError)
-                        }
-                        return
-                }
 
-                if !incrementAPIUsage(apiKey, limit) {
-                        ctx.Error("Slow down you have hit your daily request limit", fasthttp.StatusTooManyRequests)
-                        return
-                }
-
-                // Cache API key data
-                apiCache.Set(apiKey, map[string]interface{}{
-                        "chain": chain, "org": org, "limit": limit, "org_id": strconv.Itoa(orgID),
-                }, 1*time.Hour)
-
-                // Proceed with proxy logic
-                // Proxy request to backend server
-                proxyRequest(ctx, &ctx.Request, proxyHost, proxyPort, chain)
-                // Increment API requests metric
-                metricRequestsAPI.WithLabelValues(apiKey, org, strconv.Itoa(orgID), chain, strconv.Itoa(ctx.Response.StatusCode())).Inc()
-                metricAPICache.WithLabelValues("MISS").Inc()
+    var chain, org string
+    var limit, orgID int
+    stmt, err := db.Prepare("SELECT chain_name, org_name, `limit`, org_id FROM api_keys WHERE api_key = ?")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer stmt.Close()
+    row := stmt.QueryRow(apiKey)
+    err = row.Scan(&chain, &org, &limit, &orgID)
+    if err != nil {
+        if err == sql.ErrNoRows {
+            ctx.Error("Invalid API key", fasthttp.StatusForbidden)
+            metricAPICache.WithLabelValues("INVALID").Inc()
+        } else {
+            ctx.Error("Internal server error", fasthttp.StatusInternalServerError)
         }
+        return
+    }
 
-        // Start FastHTTP server
-        go func() {
-                if err := fasthttp.ListenAndServe(":80", requestHandler); err != nil {
-                        log.Fatalf("Error in ListenAndServe: %s", err)
-                }
-        }()
+    if !incrementAPIUsage(apiKey, limit) {
+        ctx.Error("Slow down you have hit your daily request limit", fasthttp.StatusTooManyRequests)
+        return
+    }
 
-        // Expose Prometheus metrics endpoint on port 9100
-        http.Handle("/metrics", promhttp.Handler())
-        if err := http.ListenAndServe(":9100", nil); err != nil {
-                log.Fatalf("Error starting Prometheus server: %s", err)
-        }
+    // Cache API key data
+    apiCache.Set(apiKey, map[string]interface{}{
+        "chain": chain, "org": org, "limit": limit, "org_id": strconv.Itoa(orgID),
+    }, 1*time.Hour)
+
+    // Proceed with proxy logic
+    proxyRequest(ctx, &ctx.Request, proxyHost, proxyPort, chain)
+    // Increment API requests metric
+    metricRequestsAPI.WithLabelValues(apiKey, org, strconv.Itoa(orgID), chain, strconv.Itoa(ctx.Response.StatusCode())).Inc()
+    metricAPICache.WithLabelValues("MISS").Inc()
 }
 
-// Function to extract API key from query string
+// extractAPIKey extracts API key from the query string
 func extractAPIKey(queryString string) string {
-        // Split query string by '=' to directly extract the API key
-        parts := strings.Split(queryString, "=")
-        if len(parts) != 2 || parts[0] != "/api" {
-                return ""
-        }
-        return parts[1]
+    parts := strings.Split(queryString, "=")
+    if len(parts) != 2 || parts[0] != "/api" {
+        return ""
+    }
+    return parts[1]
 }
 
 // Function to proxy the request to the backend server
