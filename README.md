@@ -15,13 +15,17 @@ The API server is the backbone of our system, facilitating user authentication, 
 - Endpoint creation, rotation, and deletion
 - Endpoint analytics for performance insights
 
-### 2. API Gateway
-The API Gateway serves as the interface between our system and the Pokt network's gateway server. Written in Lua scripting atop OpenResty (nginx), it handles inbound RPC request authentication by cross-referencing API keys with our MySQL database. And ensures the requests are routed to the target chain.
+### 2. Liquify API Gateway
 
-#### Key Functions:
-- Routing of inbound requests to the correct chain
-- Verification of API keys against stored database records
-- Caching of API keys for low latency authentication
+This API Gateway, written in Go, acts as a middleware between clients and pokt gateway servers. It verifies API keys stored in a MySQL database, caches them for efficiency, enforces rate limiting, and forwards requests to backend servers. The gateway also logs Prometheus metrics, tracking requests by API key, cache hits, and total HTTP requests, along with rate limiting information.
+
+#### Features
+
+- **API Key Verification**: Keys passed in the path (`/api=<key>`) are verified against a MySQL database.
+- **Caching**: Validated keys are cached for 1 hour to minimize database queries and improve performance.
+- **Rate Limiting**: Requests from each API key are rate-limited, returning a 429 status code if the limit is breached.
+- **Forwarding**: Requests with valid keys are forwarded to backend servers, and responses are sent back to the caller.
+- **Prometheus Metrics**: Metrics are logged on a per API key basis, including requests by API key, cache hits, and total HTTP requests, providing insights into gateway performance.
 
 ## How to Use
 TODO
