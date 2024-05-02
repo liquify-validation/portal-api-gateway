@@ -120,6 +120,11 @@ func incrementAPIUsage(apiKey string, limit int) bool {
 }
 
 func main() {
+    // Print out the information at the start of the application
+    fmt.Println("Welcome to the Liquify API Gateway!")
+    fmt.Println("This gateway is developed by Liquify LTD.")
+    fmt.Println("For any inquiries, please contact contact@liquify.io.")
+    
     // Load environment variables from .env file
     errEnv := godotenv.Load()
     if errEnv != nil {
