@@ -108,7 +108,7 @@ func incrementAPIUsage(apiKey string, limit int) bool {
         usage = &APIUsage{Count: 1, LastUpdate: time.Now()}
     } else {
         // Increment the usage count
-        if usage.Count >= int64(limit) {
+        if limit != 0 && usage.Count >= int64(limit) {
             return false
         }
         usage.Count++
