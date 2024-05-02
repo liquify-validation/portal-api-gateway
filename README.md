@@ -30,5 +30,7 @@ This API Gateway, written in Go, acts as a middleware between clients and pokt g
 ## How to Use
 TODO
 
+![screenshot](images/gateway-stack.png)
+
 ## Feedback and Support
 If you have any questions, feedback, or require assistance, please contact our team at [contact@liquify.io](mailto:contact@liquify.io). We're here to support you in leveraging our gateway backend effectively.
