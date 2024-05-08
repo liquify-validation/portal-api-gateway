@@ -173,7 +173,7 @@ func startFastHTTPServer() {
     // Define the request handler function
     requestHandler := func(ctx *fasthttp.RequestCtx) {
         apiKey, path ,err := extractAPIKeyAndPath(ctx)
-        if err != nil {
+        if err != nil or apiKey == ""{
             log.Fatalf(path)
             ctx.Error("Forbidden", fasthttp.StatusForbidden)
             return
@@ -304,8 +304,10 @@ func extractAPIKey(queryString string) string {
 func proxyRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, host string, port string, chain string) {
         // Create a new HTTP client
         client := &fasthttp.Client{}
+        maxRetries := 3
 
         if chainCode, ok := chainMap[chain]; ok {
+            for attempt := 0; attempt <= maxRetries; attempt++ {
                 uri := "http://" + host + ":" + port + "/relay/" + chainCode
                 req.SetRequestURI(uri)
 
@@ -325,6 +327,11 @@ func proxyRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, host string, 
 
                 // Increment Prometheus metrics
                 requestsTotal.WithLabelValues(fmt.Sprintf("%d", ctx.Response.StatusCode())).Inc()
+                
+                if backendResp.StatusCode() == fasthttp.StatusOK {
+                    return
+                }
+            }
         } else {
                 ctx.Error(fmt.Sprintf("Chain does not exist in chainMap"), fasthttp.StatusBadGateway)
                 requestsTotal.WithLabelValues("502").Inc()
