@@ -174,7 +174,7 @@ func startFastHTTPServer() {
     requestHandler := func(ctx *fasthttp.RequestCtx) {
         apiKey, path ,err := extractAPIKeyAndPath(ctx)
         if err != nil || apiKey == "" {
-            log.Fatalf(path)
+            log.Printf("invalid path: %s", path)
             ctx.Error("Forbidden", fasthttp.StatusForbidden)
             return
         }
