@@ -20,18 +20,6 @@ import (
         "github.com/valyala/fasthttp"
 )
 
-var chainMap = map[string]string{
-        "eth":     "0021",
-        "fuse":    "0005",
-        "polygon": "0009",
-        "solana":  "C006",
-        "bsc":     "0004",
-        "base":    "0079",
-        "arb":     "0066",
-        "dfk":     "03DF",
-        "klaytn":  "0056",
-}
-
 var apiCache *cache.Cache
 
 type APIUsage struct {
@@ -169,11 +157,23 @@ func startFastHTTPServer() {
     dbDatabaseName := os.Getenv("DB_NAME")
     proxyHost := os.Getenv("PROXY_HOST")
     proxyPort := os.Getenv("PROXY_PORT")
-    
+
+    chainMap := make(map[string][]string)
+    keys := []string{"eth","fuse","polygon","solana","bsc","base","arb","dfk","klaytn"}
+
+    for _, key := range keys {
+        value := os.Getenv(key)
+        if value != "" {
+            chainMap[key] = strings.Split(value, ",")
+        }
+    }
+   
+
+    fmt.Println(chainMap)
     // Define the request handler function
     requestHandler := func(ctx *fasthttp.RequestCtx) {
         apiKey, path ,err := extractAPIKeyAndPath(ctx)
-        if err != nil or apiKey == ""{
+        if err != nil || apiKey == "" {
             log.Fatalf(path)
             ctx.Error("Forbidden", fasthttp.StatusForbidden)
             return
@@ -181,12 +181,12 @@ func startFastHTTPServer() {
 
         // Check if API key exists in cache
         if cacheEntry, found := apiCache.Get(apiKey); found {
-            handleCachedAPIKey(ctx, apiKey, cacheEntry.(map[string]interface{}), proxyHost, proxyPort)
+            handleCachedAPIKey(ctx, apiKey, cacheEntry.(map[string]interface{}), proxyHost, proxyPort, chainMap)
             return
         }
 
         // Handle API key not found in cache
-        handleAPIKeyNotFound(ctx, apiKey, proxyHost, proxyPort, dbUser, dbPassword, dbHost, dbPort, dbDatabaseName)
+        handleAPIKeyNotFound(ctx, apiKey, proxyHost, proxyPort, dbUser, dbPassword, dbHost, dbPort, dbDatabaseName, chainMap)
     }
 
     // Start the FastHTTP server on port 80
@@ -216,7 +216,7 @@ func extractAPIKeyAndPath(ctx *fasthttp.RequestCtx) (string, string, error) {
 }
 
 // handleCachedAPIKey handles requests with cached API key
-func handleCachedAPIKey(ctx *fasthttp.RequestCtx, apiKey string, keyData map[string]interface{}, proxyHost string, proxyPort string) {
+func handleCachedAPIKey(ctx *fasthttp.RequestCtx, apiKey string, keyData map[string]interface{}, proxyHost string, proxyPort string, chainMap map[string][]string) {
     // Check if all required keys exist in the keyData map
     requiredKeys := []string{"limit", "chain", "org", "org_id"}
     for _, key := range requiredKeys {
@@ -240,13 +240,13 @@ func handleCachedAPIKey(ctx *fasthttp.RequestCtx, apiKey string, keyData map[str
         return
     }
 
-    proxyRequest(ctx, &ctx.Request, proxyHost, proxyPort, keyData["chain"].(string))
+    proxyRequest(ctx, &ctx.Request, proxyHost, proxyPort, keyData["chain"].(string),chainMap)
     metricRequestsAPI.WithLabelValues(apiKey, keyData["org"].(string), keyData["org_id"].(string), keyData["chain"].(string), strconv.Itoa(ctx.Response.StatusCode())).Inc()
     metricAPICache.WithLabelValues("HIT").Inc()
 }
 
 // handleAPIKeyNotFound handles requests with API key not found
-func handleAPIKeyNotFound(ctx *fasthttp.RequestCtx, apiKey string, proxyHost string, proxyPort string, dbUser string, dbPassword string, dbHost string, dbPort string, dbDatabaseName string) {
+func handleAPIKeyNotFound(ctx *fasthttp.RequestCtx, apiKey string, proxyHost string, proxyPort string, dbUser string, dbPassword string, dbHost string, dbPort string, dbDatabaseName string, chainMap map[string][]string) {
 
         db, err := sql.Open("mysql", dbUser+":"+dbPassword+"@tcp("+dbHost+":"+dbPort+")/"+dbDatabaseName)
                 if err != nil {
@@ -285,7 +285,7 @@ func handleAPIKeyNotFound(ctx *fasthttp.RequestCtx, apiKey string, proxyHost str
     }, 1*time.Hour)
 
     // Proceed with proxy logic
-    proxyRequest(ctx, &ctx.Request, proxyHost, proxyPort, chain)
+    proxyRequest(ctx, &ctx.Request, proxyHost, proxyPort, chain, chainMap)
     // Increment API requests metric
     metricRequestsAPI.WithLabelValues(apiKey, org, strconv.Itoa(orgID), chain, strconv.Itoa(ctx.Response.StatusCode())).Inc()
     metricAPICache.WithLabelValues("MISS").Inc()
@@ -301,36 +301,49 @@ func extractAPIKey(queryString string) string {
 }
 
 // Function to proxy the request to the backend server
-func proxyRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, host string, port string, chain string) {
+func proxyRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, host string, port string, chain string, chainMap map[string][]string) {
         // Create a new HTTP client
         client := &fasthttp.Client{}
         maxRetries := 3
 
         if chainCode, ok := chainMap[chain]; ok {
-            for attempt := 0; attempt <= maxRetries; attempt++ {
-                uri := "http://" + host + ":" + port + "/relay/" + chainCode
-                req.SetRequestURI(uri)
+            if len(chainCode) != 0 {
+                for attempt := 0; attempt <= maxRetries; attempt++ {
+                    uri := ""
+                    if (attempt + 1) >= len(chainCode) {
+                        uri = chainCode[attempt]
+                    } else {
+                        uri = chainCode[0]
+                    }
+                    req.SetRequestURI(uri)
 
-                // Perform the request to the backend server
-                backendResp := fasthttp.AcquireResponse()
-                defer fasthttp.ReleaseResponse(backendResp)
+                    // Perform the request to the backend server
+                    backendResp := fasthttp.AcquireResponse()
+                    defer fasthttp.ReleaseResponse(backendResp)
 
-                if err := client.Do(req, backendResp); err != nil {
-                        ctx.Error(fmt.Sprintf("Error proxying request: %s", err), fasthttp.StatusBadGateway)
-                        requestsTotal.WithLabelValues("502").Inc()
+                    if err := client.Do(req, backendResp); err != nil {
+                            log.Printf("Failed proxy too: %s", uri)
+                            requestsTotal.WithLabelValues("502").Inc()
+                            ctx.Error(fmt.Sprintf("Error proxying request: %s", err), fasthttp.StatusBadGateway)
+                            continue
+                    }
+
+                    // Set the response headers and body from the backend response
+                    backendResp.Header.CopyTo(&ctx.Response.Header)
+                    ctx.Response.SetBody(backendResp.Body())
+
+                    // Increment Prometheus metrics
+                    requestsTotal.WithLabelValues(fmt.Sprintf("%d", ctx.Response.StatusCode())).Inc()
+                    
+                    if backendResp.StatusCode() == fasthttp.StatusOK {
                         return
+                    }
+                    log.Printf("Failed proxy too: %s", uri)
                 }
-
-                // Set the response headers and body from the backend response
-                backendResp.Header.CopyTo(&ctx.Response.Header)
-                ctx.Response.SetBody(backendResp.Body())
-
-                // Increment Prometheus metrics
-                requestsTotal.WithLabelValues(fmt.Sprintf("%d", ctx.Response.StatusCode())).Inc()
-                
-                if backendResp.StatusCode() == fasthttp.StatusOK {
-                    return
-                }
+            } else {
+                ctx.Error(fmt.Sprintf("No endpoint found"), fasthttp.StatusBadGateway)
+                requestsTotal.WithLabelValues("502").Inc()
+                return
             }
         } else {
                 ctx.Error(fmt.Sprintf("Chain does not exist in chainMap"), fasthttp.StatusBadGateway)
