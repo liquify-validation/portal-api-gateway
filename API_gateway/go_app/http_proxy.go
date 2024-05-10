@@ -250,7 +250,8 @@ func handleAPIKeyNotFound(ctx *fasthttp.RequestCtx, apiKey string, proxyHost str
 
         db, err := sql.Open("mysql", dbUser+":"+dbPassword+"@tcp("+dbHost+":"+dbPort+")/"+dbDatabaseName)
                 if err != nil {
-                    log.Fatalf("Error opening database connection: %s", err)
+                    log.Printf("Error opening database connection: %s", err)
+                    ctx.Error("Internal server error", fasthttp.StatusInternalServerError)
                 }
                 defer db.Close()
 
@@ -310,7 +311,7 @@ func proxyRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, host string, 
             if len(chainCode) != 0 {
                 for attempt := 0; attempt <= maxRetries; attempt++ {
                     uri := ""
-                    if (attempt + 1) >= len(chainCode) {
+                    if attempt < len(chainCode) {
                         uri = chainCode[attempt]
                     } else {
                         uri = chainCode[0]
