@@ -6,18 +6,7 @@ Welcome to Liquify's gateway portal backend repository! This repository houses t
 
 ## Components
 
-### 1. API Server
-The API server is the backbone of our system, facilitating user authentication, organization management, endpoint lifecycle management, and endpoint analytics. Built with Python, it leverages a MySQL database to store all critical data.
-
-#### Features:
-- User authentication and management
-- Organization creation and management
-- Endpoint creation, rotation, and deletion
-- Endpoint analytics for performance insights
-
-### 2. Liquify API Gateway
-
-This API Gateway, written in Go, acts as a middleware between clients and pokt gateway servers. It verifies API keys stored in a MySQL database, caches them for efficiency, enforces rate limiting, and forwards requests to backend servers. The gateway also logs Prometheus metrics, tracking requests by API key, cache hits, and total HTTP requests, along with rate limiting information.
+The API Gateway, written in Go, acts as a middleware between clients and pokt gateway servers. It verifies API keys stored in a MySQL database, caches them for efficiency, enforces rate limiting, and forwards requests to backend servers. The gateway also logs Prometheus metrics, tracking requests by API key, cache hits, and total HTTP requests, along with rate limiting information.
 
 #### Features
 
