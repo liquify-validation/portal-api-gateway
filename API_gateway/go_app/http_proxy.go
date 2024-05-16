@@ -295,14 +295,30 @@ func handleAPIKeyNotFound(ctx *fasthttp.RequestCtx, apiKey string, proxyHost str
 // extractAPIKey extracts API key from the query string
 func extractAPIKey(queryString string) string {
     parts := strings.Split(queryString, "=")
-    if len(parts) != 2 || parts[0] != "/api" {
+    if len(parts) < 2 || parts[0] != "/api" {
         return ""
     }
     return parts[1]
 }
 
+func extractAdditionalPath(queryString string) string {
+    parts := strings.Split(queryString, "/")
+    if len(parts) > 2 {
+		// parts[0] will be an empty string because the string starts with '/'
+		remainingParts := parts[2:]
+		reconstructedPath := "/" + strings.Join(remainingParts, "/")
+		
+        return reconstructedPath
+	} else {
+		return ""
+	}
+}
+
 // Function to proxy the request to the backend server
 func proxyRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, host string, port string, chain string, chainMap map[string][]string) {
+        // Get the input path from the request context
+        path := extractAdditionalPath(string(ctx.Path()))
+
         // Create a new HTTP client
         client := &fasthttp.Client{}
         maxRetries := 3
@@ -312,9 +328,9 @@ func proxyRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, host string, 
                 for attempt := 0; attempt <= maxRetries; attempt++ {
                     uri := ""
                     if attempt < len(chainCode) {
-                        uri = chainCode[attempt]
+                        uri = chainCode[attempt] + path
                     } else {
-                        uri = chainCode[0]
+                        uri = chainCode[0] + path
                     }
                     req.SetRequestURI(uri)
 
