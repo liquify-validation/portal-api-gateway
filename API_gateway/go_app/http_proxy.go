@@ -94,6 +94,7 @@ func incrementAPIUsage(apiKey string, limit int) bool {
     if usage == nil {
         // Initialize usage if not found
         usage = &APIUsage{Count: 1, LastUpdate: time.Now()}
+        setUsage(apiKey, usage, usage.Count == 1) // If count was 1, then it's an initialization
     } else {
         // Increment the usage count
         if limit != 0 && usage.Count >= int64(limit) {
@@ -101,9 +102,7 @@ func incrementAPIUsage(apiKey string, limit int) bool {
         }
         usage.Count++
     }
-
-    // Update the entry in the cache
-    setUsage(apiKey, usage, usage.Count == 1) // If count was 1, then it's an initialization
+    
     return true
 }
 
