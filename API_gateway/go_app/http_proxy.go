@@ -102,7 +102,7 @@ func incrementAPIUsage(apiKey string, limit int) bool {
         }
         usage.Count++
     }
-    
+
     return true
 }
 
@@ -171,6 +171,21 @@ func startFastHTTPServer() {
     fmt.Println(chainMap)
     // Define the request handler function
     requestHandler := func(ctx *fasthttp.RequestCtx) {
+        // Set the headers after calling proxy request as they will get overwritten otherwise (as we copy the headers from the upstream)
+        setCORSHeaders := func() {
+            if len(ctx.Response.Header.Peek("Access-Control-Allow-Origin")) == 0 {
+                ctx.Response.Header.Set("Access-Control-Allow-Origin", "*")
+            }
+            
+            if len(ctx.Response.Header.Peek("Access-Control-Allow-Methods")) == 0 {
+                ctx.Response.Header.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+            }
+    
+            if len(ctx.Response.Header.Peek("Access-Control-Allow-Headers")) == 0 {
+                ctx.Response.Header.Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            }
+        }
+        
         apiKey, path ,err := extractAPIKeyAndPath(ctx)
         if err != nil || apiKey == "" {
             log.Printf("invalid path: %s", path)
@@ -181,11 +196,13 @@ func startFastHTTPServer() {
         // Check if API key exists in cache
         if cacheEntry, found := apiCache.Get(apiKey); found {
             handleCachedAPIKey(ctx, apiKey, cacheEntry.(map[string]interface{}), proxyHost, proxyPort, chainMap)
+            setCORSHeaders()
             return
         }
 
         // Handle API key not found in cache
         handleAPIKeyNotFound(ctx, apiKey, proxyHost, proxyPort, dbUser, dbPassword, dbHost, dbPort, dbDatabaseName, chainMap)
+        setCORSHeaders()
     }
 
     // Start the FastHTTP server on port 80
