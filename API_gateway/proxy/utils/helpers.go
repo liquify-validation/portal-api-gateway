@@ -20,8 +20,18 @@ func ExtractAPIKeyAndPath(ctx *fasthttp.RequestCtx) (string, string, error) {
 
 // ExtractAdditionalPath extracts additional path information
 func ExtractAdditionalPath(path string) string {
-	return strings.TrimPrefix(path, "/")
+	parts := strings.Split(path, "/")
+	if len(parts) > 2 {
+		// parts[0] will be an empty string because the string starts with '/'
+		remainingParts := parts[2:]
+		reconstructedPath := "/" + strings.Join(remainingParts, "/")
+
+		return reconstructedPath
+	} else {
+		return ""
+	}
 }
+
 
 // isWebSocketRequest checks if the request is a WebSocket upgrade request
 func IsWebSocketRequest(ctx *fasthttp.RequestCtx) bool {
