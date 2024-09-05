@@ -34,6 +34,13 @@ func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain str
 	// Get the input path from the request context
 	path := utils.ExtractAdditionalPath(string(ctx.Path()))
 
+	if req.Header.Peek("X-Forwarded-For") == nil {
+		xff := ctx.Request.Header.Peek("X-Forwarded-For")
+		if len(xff) > 0 {
+			req.Header.Set("X-Forwarded-For", string(xff)) // Copy existing X-Forwarded-For header
+		}
+	}
+
 	maxRetries := 3
 	responseChan := make(chan *fasthttp.Response, 1)
 	errChan := make(chan error, 1)
