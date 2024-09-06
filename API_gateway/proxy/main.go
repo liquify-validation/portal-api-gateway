@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"flag"
+	"os"
 	"log"
 	"net/http"
 	"sync"
@@ -21,11 +23,31 @@ var (
 	usageMutexMap sync.Map
 )
 
+var (
+	version = "dev"     // Default value, will be overridden at build time
+	gitHash = "unknown" // Default value, will be overridden at build time
+)
+
 func main() {
+	verFlag := flag.Bool("v", false, "Print the version and Git commit hash and exit")
+
+	// Parse command-line flags
+	flag.Parse()
+
+	// If the version flag is passed, print the version and Git hash and exit
+	if *verFlag {
+		fmt.Printf("API Gateway: %s\n", version)
+		fmt.Printf("Git Commit Hash: %s\n", gitHash)
+		os.Exit(0)
+	}
+
+
 	// Print welcome message
 	fmt.Println("Welcome to the Liquify API Gateway!")
 	fmt.Println("This gateway is developed by Liquify LTD.")
 	fmt.Println("For any inquiries, please contact contact@liquify.io.")
+	fmt.Printf("API Gateway: %s\n", version)
+	fmt.Printf("Git Commit Hash: %s\n", gitHash)
 
 	// Load environment variables
 	if errEnv := godotenv.Load(); errEnv != nil {
