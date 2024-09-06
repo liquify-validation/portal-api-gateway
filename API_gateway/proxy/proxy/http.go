@@ -30,10 +30,14 @@ func (e *ProxyError) Error() string {
         return e.Msg
 }
 
-func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain string, chainMap map[string][]string) {
+func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain string, chainMap map[string][]string, apiKey string) {
         queryString := string(ctx.QueryArgs().QueryString())
         // Get the input path from the request context
         path := utils.ExtractAdditionalPath(string(ctx.Path()),queryString)
+
+		if req.Header.Peek("API-Key") == nil {
+			req.Header.Set("API-Key", string(apiKey)) // Add the api key to the header
+		}
 
         maxRetries := 3
         responseChan := make(chan *fasthttp.Response, 1)
