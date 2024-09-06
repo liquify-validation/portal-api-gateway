@@ -2,6 +2,7 @@ package handlers
 
 import (
         "log"
+		"net/http"
         "sync"
         "time"
 
@@ -34,11 +35,13 @@ func handleWebSocketRequest(ctx *fasthttp.RequestCtx, apiKey string, chainMap ma
 
 								headers := http.Header{}
 								headers.Add("API-Key", apiKey)
-								if ctx.Header.Peek("X-Forwarded-For") == nil {
-									xff := ctx.Request.Header.Peek("X-Forwarded-For")
-									if len(xff) > 0 {
-										headers.Add("X-Forwarded-For", string(xff)) // Copy existing X-Forwarded-For header
-									}
+
+								// Handle the X-Forwarded-For header
+								xff := ctx.Request.Header.Peek("X-Forwarded-For")
+								if len(xff) > 0 {
+									headers.Add("X-Forwarded-For", string(xff)) // Copy existing X-Forwarded-For header
+								} else {
+									headers.Add("X-Forwarded-For", ctx.RemoteIP().String()) // Use client's IP if not present
 								}
 
                                 backendConn, _, err := websocket.DefaultDialer.Dial(backendURL, headers)
