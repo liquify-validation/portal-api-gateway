@@ -77,7 +77,7 @@ func handleCachedAPIKey(ctx *fasthttp.RequestCtx, apiKey string, keyData map[str
 		return
 	}
 
-	proxy.ProxyHttpRequest(ctx, &ctx.Request, keyData["chain"].(string), chainMap)
+	proxy.ProxyHttpRequest(ctx, &ctx.Request, keyData["chain"].(string), chainMap, apiKey)
 	metrics.MetricRequestsAPI.WithLabelValues(apiKey, keyData["org"].(string), keyData["org_id"].(string), keyData["chain"].(string), strconv.Itoa(ctx.Response.StatusCode())).Inc()
 	metrics.MetricAPICache.WithLabelValues("HIT").Inc()
 }

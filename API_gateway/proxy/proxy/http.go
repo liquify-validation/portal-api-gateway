@@ -30,7 +30,7 @@ func (e *ProxyError) Error() string {
 	return e.Msg
 }
 
-func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain string, chainMap map[string][]string) {
+func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain string, chainMap map[string][]string, apiKey string) {
 	// Get the input path from the request context
 	path := utils.ExtractAdditionalPath(string(ctx.Path()))
 
@@ -39,6 +39,10 @@ func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain str
 		if len(xff) > 0 {
 			req.Header.Set("X-Forwarded-For", string(xff)) // Copy existing X-Forwarded-For header
 		}
+	}
+
+	if req.Header.Peek("API-Key") == nil {
+		req.Header.Set("API-Key", string(apiKey)) // Add the api key to the header
 	}
 
 	maxRetries := 3
