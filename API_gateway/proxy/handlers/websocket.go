@@ -31,7 +31,17 @@ func handleWebSocketRequest(ctx *fasthttp.RequestCtx, apiKey string, chainMap ma
                                 //uri := chainCode[0] + path
 
                                 backendURL := chainCode[0]
-                                backendConn, _, err := websocket.DefaultDialer.Dial(backendURL, nil)
+
+								headers := http.Header{}
+								headers.Add("API-Key", apiKey)
+								if ctx.Header.Peek("X-Forwarded-For") == nil {
+									xff := ctx.Request.Header.Peek("X-Forwarded-For")
+									if len(xff) > 0 {
+										headers.Add("X-Forwarded-For", string(xff)) // Copy existing X-Forwarded-For header
+									}
+								}
+
+                                backendConn, _, err := websocket.DefaultDialer.Dial(backendURL, headers)
                                 if err != nil {
                                         log.Printf("Failed to connect to backend: %s", err)
                                         return
