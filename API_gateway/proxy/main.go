@@ -73,7 +73,7 @@ func main() {
 
 func startPrometheusServer() {
 	http.Handle("/metrics", promhttp.Handler())
-	if err := http.ListenAndServe(":29100", nil); err != nil {
+	if err := http.ListenAndServe(":9100", nil); err != nil {
 		log.Fatalf("Error starting Prometheus server: %s", err)
 	}
 }
