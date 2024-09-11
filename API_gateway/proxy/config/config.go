@@ -24,7 +24,7 @@ func LoadChainMap() (map[string][]string, map[string][]string) {
 	wsEndpoints := make(map[string][]string)
 
 	// Define keys for HTTP and WebSocket
-	keys := []string{"eth", "fuse", "polygon", "solana", "bsc", "base", "arb", "dfk", "klaytn", "linea", "gnosis", "mantle", "sepolia", "tron", "optimism", "holesky", "thorchain_midgard", "thorchain_api", "thorchain_rpc", "bsc_testnet", "blast", "pyth"}
+	keys := []string{"eth", "fuse", "polygon", "solana", "bsc", "base", "arb", "dfk", "klaytn", "linea", "gnosis", "mantle", "sepolia", "tron", "optimism", "holesky", "thorchain_midgard", "thorchain_api", "thorchain_rpc", "bsc_testnet", "blast", "pyth", "celo", "hermes"}
 
 	// Load endpoints
 	for _, key := range keys {
