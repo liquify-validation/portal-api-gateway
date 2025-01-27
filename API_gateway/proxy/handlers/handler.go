@@ -23,6 +23,15 @@ func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMu
 	httpEndpoints, wsEndpoints := config.LoadChainMap()
 
 	requestHandler := func(ctx *fasthttp.RequestCtx) {
+		path := string(ctx.Path())
+
+		// Handle /health endpoint
+		if path == "/health" {
+			ctx.SetStatusCode(fasthttp.StatusOK)
+			ctx.SetBodyString("OK")
+			return
+		}
+
 		apiKey, path, err := utils.ExtractAPIKeyAndPath(ctx)
 		if err != nil || apiKey == "" {
 			log.Printf("invalid path: %s", path)
@@ -31,26 +40,6 @@ func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMu
 		}
 
 		if _, found := apiCache.Get(apiKey); !found {
-			// db, err := utils.ConnectToDB(dbUser, dbPassword, dbHost, dbPort, dbDatabaseName)
-			// if err != nil {
-			// 	log.Printf("Error connecting to database: %s", err)
-			// 	ctx.Error("Internal Server Error", fasthttp.StatusInternalServerError)
-			// 	return
-			// }
-			// defer db.Close()
-
-			// keyData, err := utils.QueryAPIKeyData(db, apiKey)
-			// if err != nil {
-			// 	if err == sql.ErrNoRows {
-			// 		ctx.Error("Invalid API key", fasthttp.StatusForbidden)
-			// 		metrics.MetricAPICache.WithLabelValues("INVALID").Inc()
-			// 	} else {
-			//                 log.Printf("Error in query: %s", err)
-			// 		ctx.Error("Internal server error", fasthttp.StatusInternalServerError)
-			// 	}
-			// 	return
-			// }
-
 			db, err := sql.Open("mysql", dbUser+":"+dbPassword+"@tcp("+dbHost+":"+dbPort+")/"+dbDatabaseName)
 			if err != nil {
 				log.Fatalf("Error opening database connection: %s", err)

@@ -23,19 +23,17 @@ func LoadChainMap() (map[string][]string, map[string][]string) {
 	httpEndpoints := make(map[string][]string)
 	wsEndpoints := make(map[string][]string)
 
-	// Define keys for HTTP and WebSocket
-	keys := []string{"eth", "fuse", "polygon", "solana", "bsc", "base", "arb", "dfk", "klaytn", "linea", "gnosis", "mantle", "sepolia", "tron", "optimism", "holesky", "thorchain_midgard", "thorchain_api", "thorchain_rpc", "bsc_testnet", "blast", "pyth", "celo", "hermes"}
+	// Iterate over all environment variables
+	for _, env := range os.Environ() {
+		parts := strings.SplitN(env, "=", 2)
+		key, value := parts[0], parts[1]
 
-	// Load endpoints
-	for _, key := range keys {
-		httpValue := os.Getenv(key + "_HTTP")
-		wsValue := os.Getenv(key + "_WS")
-
-		if httpValue != "" {
-			httpEndpoints[key] = strings.Split(httpValue, ",")
-		}
-		if wsValue != "" {
-			wsEndpoints[key] = strings.Split(wsValue, ",")
+		if strings.HasSuffix(key, "_HTTP") {
+			chain := strings.TrimSuffix(key, "_HTTP")
+			httpEndpoints[chain] = strings.Split(value, ",")
+		} else if strings.HasSuffix(key, "_WS") {
+			chain := strings.TrimSuffix(key, "_WS")
+			wsEndpoints[chain] = strings.Split(value, ",")
 		}
 	}
 
