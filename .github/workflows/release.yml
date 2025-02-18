@@ -1,0 +1,38 @@
+
+name: Build and Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed to get full git history for versioning
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable  # Use the latest stable Go version
+
+      - name: Get version and git hash
+        run: |
+          echo "VERSION=$(git describe --tags --always --dirty)" >> $GITHUB_ENV
+          echo "GIT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Build binary
+        run: |
+          cd API_gateway/proxy
+          go build -ldflags "-X main.version=${VERSION} -X main.gitHash=${GIT_HASH}" -o api-gateway
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: API_gateway/proxy/api-gateway
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
