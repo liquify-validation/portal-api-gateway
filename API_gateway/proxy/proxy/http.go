@@ -31,7 +31,7 @@ func (e *ProxyError) Error() string {
         return e.Msg
 }
 
-func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain string, chainMap map[string][]string, apiKey string) {
+func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain string, chainMap map[string][]string, apiKey string, keyData map[string]interface{}) {
         queryString := string(ctx.QueryArgs().QueryString())
         // Get the input path from the request context
         path := utils.ExtractAdditionalPath(string(ctx.Path()),queryString)
@@ -51,7 +51,7 @@ func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain str
 		isSSE := strings.Contains(acceptHeader, "text/event-stream") || strings.Contains(path, "stream")
 
 		if isSSE {
-			proxySSE(chainMap[chain][0] + path, ctx, chain)
+			proxySSE(chainMap[chain][0] + path, ctx, chain, apiKey, keyData)
 			return
 		}
 
