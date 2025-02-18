@@ -30,6 +30,8 @@ var (
 
 func main() {
 	verFlag := flag.Bool("v", false, "Print the version and Git commit hash and exit")
+	proxyPort := flag.Int("port.proxy", 80, "Port for the proxy server")
+	metricsPort := flag.Int("port.metrics", 9090, "Port for the metrics server")
 
 	// Parse command-line flags
 	flag.Parse()
@@ -62,18 +64,20 @@ func main() {
 	usageCache = cache.New(24*time.Hour, 30*time.Minute)
 
 	// Start FastHTTP server to handle requests
-	go handlers.StartFastHTTPServer(apiCache, usageCache, &usageMutexMap)
+	proxyAddr := fmt.Sprintf(":%d", *proxyPort)
+	go handlers.StartFastHTTPServer(apiCache, usageCache, &usageMutexMap, proxyAddr)
 
+	metricsAddr := fmt.Sprintf(":%d", *metricsPort)
 	// Expose Prometheus metrics endpoint
-	go startPrometheusServer()
+	go startPrometheusServer(metricsAddr)
 
 	// Wait indefinitely
 	select {}
 }
 
-func startPrometheusServer() {
+func startPrometheusServer(port string) {
 	http.Handle("/metrics", promhttp.Handler())
-	if err := http.ListenAndServe(":9100", nil); err != nil {
+	if err := http.ListenAndServe(port, nil); err != nil {
 		log.Fatalf("Error starting Prometheus server: %s", err)
 	}
 }

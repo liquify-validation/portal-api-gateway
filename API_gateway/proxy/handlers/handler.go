@@ -18,7 +18,7 @@ import (
 	"proxy/utils"
 )
 
-func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMutexMap *sync.Map) {
+func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMutexMap *sync.Map, addr string) {
 	dbUser, dbPassword, dbHost, dbPort, dbDatabaseName := config.LoadDBConfig()
 	httpEndpoints, wsEndpoints := config.LoadChainMap()
 
@@ -89,7 +89,7 @@ func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMu
 		}
 	}
 
-	if err := fasthttp.ListenAndServe(":80", requestHandler); err != nil {
+	if err := fasthttp.ListenAndServe(addr, requestHandler); err != nil {
 		log.Fatalf("Error in ListenAndServe: %s", err)
 	}
 }

@@ -6,6 +6,7 @@ import (
         "fmt"
         "log"
         "time"
+		"strings"
 
         "github.com/valyala/fasthttp"
 
@@ -44,6 +45,14 @@ func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain str
 
 		if req.Header.Peek("API-Key") == nil {
 			req.Header.Set("API-Key", string(apiKey)) // Add the api key to the header
+		}
+
+		acceptHeader := string(ctx.Request.Header.Peek("Accept"))
+		isSSE := strings.Contains(acceptHeader, "text/event-stream") || strings.Contains(path, "stream")
+
+		if isSSE {
+			proxySSE(chainMap[chain][0] + path, ctx, chain)
+			return
 		}
 
         maxRetries := 3
