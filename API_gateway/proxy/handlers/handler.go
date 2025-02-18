@@ -42,7 +42,9 @@ func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMu
 		if _, found := apiCache.Get(apiKey); !found {
 			db, err := sql.Open("mysql", dbUser+":"+dbPassword+"@tcp("+dbHost+":"+dbPort+")/"+dbDatabaseName)
 			if err != nil {
-				log.Fatalf("Error opening database connection: %s", err)
+				log.Printf("Error opening database connection: %s", err)
+				ctx.Error("Internal server error", fasthttp.StatusInternalServerError)
+				return
 			}
 			defer db.Close()
 
@@ -50,7 +52,9 @@ func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMu
 			var limit, orgID int
 			stmt, err := db.Prepare("SELECT chain_name, org_name, `limit`, org_id FROM api_keys WHERE api_key = ?")
 			if err != nil {
-				log.Fatalf("Error in query: %s", err)
+				log.Printf("Error in query: %s", err)
+				ctx.Error("Internal server error", fasthttp.StatusInternalServerError)
+				return
 			}
 			defer stmt.Close()
 			row := stmt.QueryRow(apiKey)
