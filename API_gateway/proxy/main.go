@@ -1,11 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"flag"
-	"os"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -42,7 +42,6 @@ func main() {
 		fmt.Printf("Git Commit Hash: %s\n", gitHash)
 		os.Exit(0)
 	}
-
 
 	// Print welcome message
 	fmt.Println("Welcome to the Liquify API Gateway!")
