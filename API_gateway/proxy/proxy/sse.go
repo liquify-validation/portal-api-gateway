@@ -16,7 +16,7 @@ import (
 	"proxy/metrics"
 )
 
-func proxySSE(target string, ctx *fasthttp.RequestCtx, chain string) {
+func proxySSE(target string, ctx *fasthttp.RequestCtx, chain string, apikey string, keyData map[string]interface{}) {
 	parsedURL, err := url.Parse(target)
 	if err != nil {
 		log.Println("Invalid target URL:", err)
@@ -65,7 +65,8 @@ func proxySSE(target string, ctx *fasthttp.RequestCtx, chain string) {
 			}
 			if line == "\r\n" {
 				// Assume with each header we have a new packet of data
-				metrics.RequestsTotal.WithLabelValues(chain, hostPort, strconv.Itoa(200)).Inc()
+				metrics.RequestsTotal.WithLabelValues(strconv.Itoa(200)).Inc()
+				metrics.MetricRequestsAPI.WithLabelValues(apikey, keyData["org"].(string), keyData["org_id"].(string), keyData["chain"].(string), strconv.Itoa(200)).Inc()
 				break
 			}
 		}
