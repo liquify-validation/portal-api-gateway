@@ -16,6 +16,12 @@ func ExtractAPIKeyAndPath(ctx *fasthttp.RequestCtx) (string, string, error) {
 	}
 	path := parsedURI.Path
 	apiKey := extractAPIKey(path)
+
+	// If API key is not found in path, check headers
+	if apiKey == "" {
+		apiKey = string(ctx.Request.Header.Peek("X-API-Key"))
+	}
+
 	return apiKey, path, nil
 }
 
