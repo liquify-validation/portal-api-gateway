@@ -7,10 +7,10 @@ import (
 	"net/url"
 
 	"log"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
-	"regexp"
 
 	"github.com/valyala/fasthttp"
 
@@ -56,7 +56,7 @@ func proxySSE(target string, ctx *fasthttp.RequestCtx, chain string, apikey stri
 
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
 		reader := bufio.NewReader(conn)
-	
+
 		// Read and discard response headers
 		for {
 			line, err := reader.ReadString('\n')
@@ -70,7 +70,7 @@ func proxySSE(target string, ctx *fasthttp.RequestCtx, chain string, apikey stri
 				break
 			}
 		}
-	
+
 		// Stream SSE messages
 		var partialChunk strings.Builder
 		for {
@@ -79,32 +79,32 @@ func proxySSE(target string, ctx *fasthttp.RequestCtx, chain string, apikey stri
 				log.Println("SSE connection closed by upstream:", err)
 				return
 			}
-	
+
 			line = strings.TrimSpace(line) // Remove leading/trailing spaces and newlines
-	
+
 			// Skip empty lines
 			if line == "" {
 				continue
 			}
-	
+
 			// Skip chunk size headers (hexadecimal lines)
 			if matched, _ := regexp.MatchString(`^[0-9a-fA-F]+$`, line); matched {
 				continue
 			}
-	
+
 			// Append valid data
 			partialChunk.WriteString(line + "\n") // Add newline since we trimmed it earlier
-	
+
 			// Strip chunk encoding headers
 			cleanData, remaining := stripChunkHeaders(partialChunk.String())
 			partialChunk.Reset()
 			partialChunk.WriteString(remaining)
-	
+
 			// **Filter out messages containing ":No update available"**
 			if strings.Contains(cleanData, ":No update available") {
 				continue
 			}
-	
+
 			// Write and flush cleaned data immediately
 			_, writeErr := w.WriteString(cleanData)
 			if writeErr != nil {
@@ -115,7 +115,7 @@ func proxySSE(target string, ctx *fasthttp.RequestCtx, chain string, apikey stri
 
 			metrics.RequestsTotal.WithLabelValues(strconv.Itoa(200)).Inc()
 			metrics.MetricRequestsAPI.WithLabelValues(apikey, keyData["org"].(string), keyData["org_id"].(string), keyData["chain"].(string), strconv.Itoa(200)).Inc()
-				
+
 			time.Sleep(10 * time.Millisecond)
 		}
 	})
