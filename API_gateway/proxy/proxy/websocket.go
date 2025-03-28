@@ -5,6 +5,7 @@ import (
 
 	"proxy/metrics"
 	"strconv"
+	"sync"
 
 	"github.com/fasthttp/websocket"
 )

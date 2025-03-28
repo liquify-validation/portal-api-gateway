@@ -1,5 +1,4 @@
-
-name: Build and Release
+name: Build and Release All
 
 on:
   release:
@@ -7,32 +6,42 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    name: Build for ${{ matrix.ubuntu_version }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - ubuntu_version: 20_04
+            runner: ubuntu-20.04
+            output_name: api-gateway-20-04
+          - ubuntu_version: 22_04
+            runner: ubuntu-22.04
+            output_name: api-gateway-22-04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Needed to get full git history for versioning
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: stable  # Use the latest stable Go version
+          go-version: stable
 
       - name: Get version and git hash
         run: |
           echo "VERSION=$(git describe --tags --always --dirty)" >> $GITHUB_ENV
           echo "GIT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-      - name: Build binary
+      - name: Build binary for Ubuntu ${{ matrix.ubuntu_version }}
         run: |
           cd API_gateway/proxy
-          go build -ldflags "-X main.version=${VERSION} -X main.gitHash=${GIT_HASH}" -o api-gateway
+          go build -ldflags "-X main.version=${VERSION} -X main.gitHash=${GIT_HASH}" -o ${{ matrix.output_name }}
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: API_gateway/proxy/api-gateway
+          files: API_gateway/proxy/${{ matrix.output_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

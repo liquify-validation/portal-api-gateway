@@ -24,7 +24,7 @@ func handleWebSocketRequest(ctx *fasthttp.RequestCtx, apiKey string, chainMap ma
 	err := upgrader.Upgrade(ctx, func(conn *websocket.Conn) {
 		defer conn.Close()
 
-		conn.SetReadDeadline(0)
+		conn.SetReadDeadline(time.Time{})
 
 		chainName := keyData["chain"].(string)
 		chainCode, ok := chainMap[chainName]
