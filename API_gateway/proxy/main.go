@@ -15,6 +15,7 @@ import (
 
 	"proxy/handlers"
 	"proxy/metrics"
+	"proxy/database"
 )
 
 var (
@@ -64,7 +65,13 @@ func main() {
 
 	// Start FastHTTP server to handle requests
 	proxyAddr := fmt.Sprintf(":%d", *proxyPort)
-	go handlers.StartFastHTTPServer(apiCache, usageCache, &usageMutexMap, proxyAddr)
+	db, err := database.InitDB()
+	if err != nil {
+		log.Printf("Error initializing DB: %v", err)
+		os.Exit(1)
+	}
+
+	go handlers.StartFastHTTPServer(apiCache, usageCache, &usageMutexMap, proxyAddr, db)
 
 	metricsAddr := fmt.Sprintf(":%d", *metricsPort)
 	// Expose Prometheus metrics endpoint
