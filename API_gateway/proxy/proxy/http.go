@@ -110,11 +110,33 @@ func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain str
 	select {
 	case backendResp := <-responseChan:
 		if backendResp != nil {
-			defer fasthttp.ReleaseResponse(backendResp)
+			// Determine response size (may be -1 if unknown)
+			contentLength := backendResp.Header.ContentLength()
+
+			ctx.SetStatusCode(backendResp.StatusCode())
 			backendResp.Header.VisitAll(func(key, value []byte) {
 				ctx.Response.Header.Set(string(key), string(value))
 			})
-			ctx.SetBodyStream(bytes.NewReader(backendResp.Body()), len(backendResp.Body()))
+
+			const maxBufferedSize = 1 * 1024 * 1024 // 1MB
+
+			// Content length is known and small
+			if contentLength >= 0 && contentLength <= maxBufferedSize {
+				// Safe to buffer and release
+				bodyCopy := append([]byte(nil), backendResp.Body()...) 
+				fasthttp.ReleaseResponse(backendResp)
+
+				ctx.SetBodyStream(bytes.NewReader(bodyCopy), len(bodyCopy))
+			} else {
+				// unknown or large body — stream without releasing
+				length := contentLength
+				if length < 0 {
+					length = -1 // chunked transfer
+				}
+				// DO NOT release backendResp here — stream uses its buffer
+				ctx.SetBodyStream(backendResp.BodyStream(), length)
+			}
+
 			metrics.RequestsTotal.WithLabelValues(fmt.Sprintf("%d", ctx.Response.StatusCode())).Inc()
 		} else {
 			ctx.Error("Error proxying request: no response received", fasthttp.StatusBadGateway)
