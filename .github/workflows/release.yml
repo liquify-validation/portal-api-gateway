@@ -51,7 +51,7 @@ jobs:
               tar -C /usr/local -xzf go1.24.3.linux-amd64.tar.gz
               export PATH=/usr/local/go/bin:$PATH
               go version
-              cd src
+              cd API_gateway/proxy
               go build -buildvcs=false -ldflags "-X main.version=${VERSION} -X main.gitHash=${GIT_HASH}" -o ${{ matrix.output_name }}
             '
 
