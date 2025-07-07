@@ -14,12 +14,15 @@ jobs:
           - ubuntu_version: 20_04
             runner: ubuntu-20.04
             output_name: api-gateway-20-04
+            docker_image: ubuntu:20.04
           - ubuntu_version: 22_04
             runner: ubuntu-22.04
             output_name: api-gateway-22-04
+            docker_image: ubuntu:22.04
           - ubuntu_version: 24_04
             runner: ubuntu-24.04
             output_name: api-gateway-24-04
+            docker_image: ubuntu:24.04
 
     steps:
       - name: Checkout repository
