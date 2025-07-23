@@ -118,7 +118,7 @@ func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain str
 				ctx.Response.Header.Set(string(key), string(value))
 			})
 
-			const maxBufferedSize = 1 * 1024 * 1024 // 1MB
+			const maxBufferedSize = 8 * 1024 * 1024 // 8MB
 
 			// Content length is known and small
 			if contentLength >= 0 && contentLength <= maxBufferedSize {
