@@ -111,31 +111,14 @@ func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain str
 	case backendResp := <-responseChan:
 		if backendResp != nil {
 			// Determine response size (may be -1 if unknown)
-			contentLength := backendResp.Header.ContentLength()
+			//contentLength := backendResp.Header.ContentLength()
 
 			ctx.SetStatusCode(backendResp.StatusCode())
 			backendResp.Header.VisitAll(func(key, value []byte) {
 				ctx.Response.Header.Set(string(key), string(value))
 			})
 
-			const maxBufferedSize = 8 * 1024 * 1024 // 8MB
-
-			// Content length is known and small
-			if contentLength >= 0 && contentLength <= maxBufferedSize {
-				// Safe to buffer and release
-				bodyCopy := append([]byte(nil), backendResp.Body()...) 
-				fasthttp.ReleaseResponse(backendResp)
-
-				ctx.SetBodyStream(bytes.NewReader(bodyCopy), len(bodyCopy))
-			} else {
-				// unknown or large body — stream without releasing
-				length := contentLength
-				if length < 0 {
-					length = -1 // chunked transfer
-				}
-				// DO NOT release backendResp here — stream uses its buffer
-				ctx.SetBodyStream(backendResp.BodyStream(), length)
-			}
+			ctx.SetBody(backendResp.Body())
 
 			metrics.RequestsTotal.WithLabelValues(fmt.Sprintf("%d", ctx.Response.StatusCode())).Inc()
 		} else {
