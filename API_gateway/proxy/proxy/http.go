@@ -130,12 +130,23 @@ func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain str
 		// Forward upstream status and body as-is (even if non-2xx)
 		ctx.SetStatusCode(backendResp.StatusCode())
 
-		// Copy a minimal, safe subset of headers
+		// Copy all headers except hop-by-hop ones. This preserves Content-Encoding/Vary/etc.
+		hopByHop := map[string]struct{}{
+			"connection":            {},
+			"keep-alive":            {},
+			"proxy-authenticate":    {},
+			"proxy-authorization":   {},
+			"te":                    {},
+			"trailer":               {},
+			"transfer-encoding":     {},
+			"upgrade":               {},
+		}
+
 		backendResp.Header.VisitAll(func(k, v []byte) {
-			switch strings.ToLower(string(k)) {
-			case "content-type", "cache-control", "etag", "last-modified":
-				ctx.Response.Header.SetBytesKV(k, v)
+			if _, skip := hopByHop[strings.ToLower(string(k))]; skip {
+				return
 			}
+			ctx.Response.Header.SetBytesKV(k, v)
 		})
 
 		// Copy body before releasing the response object
