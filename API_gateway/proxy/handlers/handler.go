@@ -65,7 +65,10 @@ func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMu
 		handleHTTPRequest(ctx, httpEndpoints, apiKey, path, cacheEntry.(map[string]interface{}), usageCache, usageMutexMap)
 	}
 
-	if err := fasthttp.ListenAndServe(addr, requestHandler); err != nil {
-		log.Fatalf("Error in ListenAndServe: %s", err)
+	server := &fasthttp.Server{
+		Handler:            requestHandler,
+		MaxRequestBodySize: 24 * 1024 * 1024, // 24 MM
+		ReadBufferSize:     256 * 1024, //256K
 	}
+	log.Fatal(server.ListenAndServe(addr))
 }
