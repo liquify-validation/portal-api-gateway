@@ -9,6 +9,10 @@ func LoadDBConfig() (string, string, string, string, string) {
 	return os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_NAME")
 }
 
+func LoadTimescaleConfig() (string, string, string, string, string) {
+	return os.Getenv("DB_USER_TS"), os.Getenv("DB_PASSWORD_TS"), os.Getenv("DB_HOST_TS"), os.Getenv("DB_PORT_TS"), os.Getenv("DB_NAME_TS")
+}
+
 func LoadProxyConfig() (string, string) {
 	return os.Getenv("PROXY_HOST"), os.Getenv("PROXY_PORT")
 }

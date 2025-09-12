@@ -71,7 +71,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	go handlers.StartFastHTTPServer(apiCache, usageCache, &usageMutexMap, proxyAddr, db)
+	// Connect to TimescaleDB
+	db_ts,err := database.InitTimescaleDB()
+	if err != nil {
+		log.Fatalf("Error connecting to TimescaleDB: %v", err)
+		os.Exit(1)
+	}
+
+	// Initialize TimescaleDB metrics buffer
+	metricsBuffer := metrics.NewMetricsBuffer(db_ts)
+	stopCh := make(chan struct{})
+	go metricsBuffer.StartFlusher(5*time.Second, stopCh)
+
+	go handlers.StartFastHTTPServer(apiCache, usageCache, &usageMutexMap, proxyAddr, db, metricsBuffer)
 
 	metricsAddr := fmt.Sprintf(":%d", *metricsPort)
 	// Expose Prometheus metrics endpoint

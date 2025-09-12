@@ -17,7 +17,7 @@ import (
 	"proxy/database"
 )
 
-func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMutexMap *sync.Map, addr string, db *sql.DB) {
+func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMutexMap *sync.Map, addr string, db *sql.DB, metricsBuffer *metrics.MetricsBuffer) {
 	httpEndpoints, wsEndpoints := config.LoadChainMap()
 
 	requestHandler := func(ctx *fasthttp.RequestCtx) {
@@ -62,7 +62,7 @@ func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMu
 			handleWebSocketRequest(ctx, apiKey, wsEndpoints, cacheEntry.(map[string]interface{}))
 			return
 		}
-		handleHTTPRequest(ctx, httpEndpoints, apiKey, path, cacheEntry.(map[string]interface{}), usageCache, usageMutexMap)
+		handleHTTPRequest(ctx, httpEndpoints, apiKey, path, cacheEntry.(map[string]interface{}), usageCache, usageMutexMap, metricsBuffer)
 	}
 
 	server := &fasthttp.Server{

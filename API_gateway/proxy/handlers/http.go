@@ -14,7 +14,7 @@ import (
 	"proxy/utils"
 )
 
-func handleHTTPRequest(ctx *fasthttp.RequestCtx, chainMap map[string][]string, apiKey string, path string, keyData map[string]interface{}, usageCache *cache.Cache, usageMutexMap *sync.Map) {
+func handleHTTPRequest(ctx *fasthttp.RequestCtx, chainMap map[string][]string, apiKey string, path string, keyData map[string]interface{}, usageCache *cache.Cache, usageMutexMap *sync.Map, metricsBuffer *metrics.MetricsBuffer) {
 	timeoutDuration := 20 * time.Second
 
 	// Create a channel to signal the completion of the request
@@ -37,7 +37,7 @@ func handleHTTPRequest(ctx *fasthttp.RequestCtx, chainMap map[string][]string, a
 
 		setCORSHeaders()
 
-		handleCachedAPIKey(ctx, apiKey, keyData, chainMap, usageCache, usageMutexMap)
+		handleCachedAPIKey(ctx, apiKey, keyData, chainMap, usageCache, usageMutexMap, metricsBuffer , "TEST")
 
 		done <- struct{}{}
 	}()
@@ -53,7 +53,7 @@ func handleHTTPRequest(ctx *fasthttp.RequestCtx, chainMap map[string][]string, a
 }
 
 // handleCachedAPIKey handles requests with cached API key
-func handleCachedAPIKey(ctx *fasthttp.RequestCtx, apiKey string, keyData map[string]interface{}, chainMap map[string][]string, usageCache *cache.Cache, usageMutexMap *sync.Map) {
+func handleCachedAPIKey(ctx *fasthttp.RequestCtx, apiKey string, keyData map[string]interface{}, chainMap map[string][]string, usageCache *cache.Cache, usageMutexMap *sync.Map, metricsBuffer *metrics.MetricsBuffer, region string) {
 	// Check if all required keys exist in the keyData map
 	requiredKeys := []string{"limit", "chain", "org", "org_id"}
 	for _, key := range requiredKeys {
@@ -79,5 +79,15 @@ func handleCachedAPIKey(ctx *fasthttp.RequestCtx, apiKey string, keyData map[str
 
 	proxy.ProxyHttpRequest(ctx, &ctx.Request, keyData["chain"].(string), chainMap, apiKey, keyData)
 	metrics.MetricRequestsAPI.WithLabelValues(apiKey, keyData["org"].(string), keyData["org_id"].(string), keyData["chain"].(string), strconv.Itoa(ctx.Response.StatusCode())).Inc()
+	metricsBuffer.IncrementBuffered(
+		apiKey,
+		keyData["org"].(string),
+		keyData["org_id"].(string),
+		keyData["chain"].(string),
+		strconv.Itoa(ctx.Response.StatusCode()),
+		"eth_blockNumber",
+		region,
+	)
+
 	metrics.MetricAPICache.WithLabelValues("HIT").Inc()
 }

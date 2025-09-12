@@ -7,6 +7,8 @@ import (
 
 	"strconv"
 
+	"fmt"
+
 	_ "github.com/go-sql-driver/mysql"
 
 	"proxy/config"
@@ -34,6 +36,30 @@ func InitDB() (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+func InitTimescaleDB() (*sql.DB, error) {
+    tsUser, tsPassword, tsHost, tsPort, tsDatabaseName := config.LoadTimescaleConfig()
+
+    dsn := fmt.Sprintf(
+        "host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+        tsHost, tsPort, tsUser, tsPassword, tsDatabaseName,
+    )
+
+    db, err := sql.Open("postgres", dsn)
+    if err != nil {
+        return nil, err
+    }
+
+    db.SetMaxOpenConns(50)
+    db.SetMaxIdleConns(10)
+    db.SetConnMaxLifetime(time.Hour)
+
+    if err = db.Ping(); err != nil {
+        return nil, err
+    }
+
+    return db, nil
 }
 
 func FetchAPIKeyInfo(db *sql.DB, apiKey string) (map[string]interface{}, error) {
