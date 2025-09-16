@@ -1,8 +1,12 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"os"
-	"strings"
+	"path/filepath"
+
+	"gopkg.in/yaml.v3"
 )
 
 func LoadDBConfig() (string, string, string, string, string) {
@@ -13,29 +17,74 @@ func LoadProxyConfig() (string, string) {
 	return os.Getenv("PROXY_HOST"), os.Getenv("PROXY_PORT")
 }
 
+type FileConfig struct {
+	Chains map[string]Chain `yaml:"chains"`
+}
+
 type ChainMap struct {
 	HTTPEndpoints      map[string][]string
 	WebSocketEndpoints map[string][]string
 }
 
-// LoadChainMap loads the chain map from environment variables
-func LoadChainMap() (map[string][]string, map[string][]string) {
-	httpEndpoints := make(map[string][]string)
-	wsEndpoints := make(map[string][]string)
+type Chain struct {
+	Type string     `yaml:"type"`
+	HTTP []Endpoint `yaml:"http"`
+	WS   []Endpoint `yaml:"ws"`
+}
 
-	// Iterate over all environment variables
-	for _, env := range os.Environ() {
-		parts := strings.SplitN(env, "=", 2)
-		key, value := parts[0], parts[1]
+type Endpoint struct {
+	URL string `yaml:"url"`
+}
 
-		if strings.HasSuffix(key, "_HTTP") {
-			chain := strings.TrimSuffix(key, "_HTTP")
-			httpEndpoints[chain] = strings.Split(value, ",")
-		} else if strings.HasSuffix(key, "_WS") {
-			chain := strings.TrimSuffix(key, "_WS")
-			wsEndpoints[chain] = strings.Split(value, ",")
+// LoadChainMap now returns three maps:
+// - httpEndpoints[chain] = []httpURLs
+// - wsEndpoints[chain]   = []wsURLs
+// - chainTypes[chain]    = type string
+func LoadChainMap() (map[string][]string, map[string][]string, map[string]string) {
+	cfgPath := os.Getenv("CONFIG_PATH")
+	if cfgPath == "" {
+		cfgPath = "config.yaml"
+	}
+
+	fc, err := loadFileConfig(cfgPath)
+	if err != nil {
+		panic(fmt.Errorf("failed to load chain config: %w", err))
+	}
+
+	httpEndpoints := make(map[string][]string, len(fc.Chains))
+	wsEndpoints := make(map[string][]string, len(fc.Chains))
+	chainTypes := make(map[string]string, len(fc.Chains))
+
+	for chainName, chain := range fc.Chains {
+		chainTypes[chainName] = chain.Type
+
+		for _, ep := range chain.HTTP {
+			if ep.URL != "" {
+				httpEndpoints[chainName] = append(httpEndpoints[chainName], ep.URL)
+			}
+		}
+		for _, ep := range chain.WS {
+			if ep.URL != "" {
+				wsEndpoints[chainName] = append(wsEndpoints[chainName], ep.URL)
+			}
 		}
 	}
 
-	return httpEndpoints, wsEndpoints
+	return httpEndpoints, wsEndpoints, chainTypes
+}
+
+func loadFileConfig(path string) (*FileConfig, error) {
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return nil, err
+	}
+
+	var fc FileConfig
+	if err := yaml.Unmarshal(data, &fc); err != nil {
+		return nil, err
+	}
+	if len(fc.Chains) == 0 {
+		return nil, errors.New("no chains defined in config")
+	}
+	return &fc, nil
 }
