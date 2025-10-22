@@ -12,13 +12,13 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"proxy/config"
+	"proxy/database"
 	"proxy/metrics"
 	"proxy/utils"
-	"proxy/database"
 )
 
 func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMutexMap *sync.Map, addr string, db *sql.DB) {
-	httpEndpoints, wsEndpoints := config.LoadChainMap()
+	httpEndpoints, wsEndpoints, _ := config.LoadChainMap()
 
 	requestHandler := func(ctx *fasthttp.RequestCtx) {
 		path := string(ctx.Path())
@@ -68,7 +68,7 @@ func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMu
 	server := &fasthttp.Server{
 		Handler:            requestHandler,
 		MaxRequestBodySize: 24 * 1024 * 1024, // 24 MM
-		ReadBufferSize:     256 * 1024, //256K
+		ReadBufferSize:     256 * 1024,       //256K
 	}
 	log.Fatal(server.ListenAndServe(addr))
 }
