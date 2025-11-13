@@ -47,7 +47,11 @@ func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain str
 	// SSE passthrough (prefer Accept header; path check kept for backward compat)
 	acceptHeader := string(ctx.Request.Header.Peek("Accept"))
 	isSSE := strings.Contains(acceptHeader, "text/event-stream") || strings.Contains(path, "stream")
-	if isSSE {
+
+	//workaround as thor has streaming keywork in it's queries
+	isTHOR := strings.Contains(strings.ToLower(chain), strings.ToLower("thor"))
+	
+	if isSSE && !isTHOR{
 		proxySSE(chainMap[chain][0]+path, ctx, chain, apiKey, keyData)
 		return
 	}
