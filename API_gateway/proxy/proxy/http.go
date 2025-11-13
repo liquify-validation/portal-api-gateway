@@ -46,7 +46,8 @@ func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain str
 
 	// SSE passthrough (prefer Accept header; path check kept for backward compat)
 	acceptHeader := string(ctx.Request.Header.Peek("Accept"))
-	isSSE := strings.Contains(acceptHeader, "text/event-stream") || strings.Contains(path, "stream")
+	isSSE := strings.Contains(acceptHeader, "text/event-stream") || (strings.Contains(path, "stream") && strings.Contains(strings.ToLower(chain), strings.ToLower("hermes")))
+	
 	if isSSE {
 		proxySSE(chainMap[chain][0]+path, ctx, chain, apiKey, keyData)
 		return
