@@ -1,6 +1,4 @@
-# Liquify Pokt Gateway Backend
-
-NOTE: This is still a work in progress!
+# Liquify Gateway Backend
 
 Welcome to Liquify's gateway portal backend repository! This repository houses the essential components that power our gateway infrastructure, designed to seamlessly integrate with our frontend applications.
 
@@ -16,8 +14,6 @@ The API Gateway, written in Go, acts as a middleware between clients and pokt ga
 - **Forwarding**: Requests with valid keys are forwarded to backend servers, and responses are sent back to the caller.
 - **Prometheus Metrics**: Metrics are logged on a per API key basis, including requests by API key, cache hits, and total HTTP requests, providing insights into gateway performance.
 
-## How to Use
-TODO
 
 ![screenshot](images/gateway-stack.png)
 
