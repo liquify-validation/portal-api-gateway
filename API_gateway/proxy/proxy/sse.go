@@ -3,18 +3,21 @@ package proxy
 import (
 	"bufio"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"net/url"
-
-	"log"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/valyala/fasthttp"
-
 	"proxy/metrics"
+
+	"github.com/valyala/fasthttp"
+)
+
+const (
+	upstreamReaderSize = 256 * 1024
+	maxEventSize       = 4 * 1024 * 1024 // 4MB safety cap
 )
 
 func proxySSE(target string, ctx *fasthttp.RequestCtx, chain string, apikey string, keyData map[string]interface{}) {
@@ -25,127 +28,110 @@ func proxySSE(target string, ctx *fasthttp.RequestCtx, chain string, apikey stri
 		return
 	}
 
-	hostPort := parsedURL.Host
-	pathAndQuery := parsedURL.RequestURI()
-
-	//Open a raw TCP connection to the host
-	conn, err := net.Dial("tcp", hostPort)
+	conn, err := net.Dial("tcp", parsedURL.Host)
 	if err != nil {
-		log.Println("Failed to connect to upstream SSE:", err)
-		ctx.Error("Failed to connect to upstream", fasthttp.StatusBadGateway)
+		log.Println("Failed to connect upstream:", err)
+		ctx.Error("Failed to connect upstream", fasthttp.StatusBadGateway)
+		return
+	}
+	defer conn.Close()
+
+	req := fmt.Sprintf(
+		"GET %s HTTP/1.1\r\nHost: %s\r\nAccept: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n",
+		parsedURL.RequestURI(),
+		parsedURL.Host,
+	)
+
+	if _, err := conn.Write([]byte(req)); err != nil {
+		log.Println("Failed to write upstream request:", err)
 		return
 	}
 
-	// Build and send the HTTP request for SSE
-	httpRequest := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\nAccept: text/event-stream\r\nConnection: keep-alive\r\n\r\n",
-		pathAndQuery, parsedURL.Host)
-
-	_, err = conn.Write([]byte(httpRequest))
-	if err != nil {
-		log.Println("Error writing SSE request:", err)
-		ctx.Error("Failed to send SSE request", fasthttp.StatusInternalServerError)
-		return
-	}
-
-	// Set SSE headers and start streaming using `SetBodyStreamWriter
-	ctx.SetContentType("text/event-stream")
 	ctx.SetStatusCode(fasthttp.StatusOK)
-	ctx.Response.Header.Set("Cache-Control", "no-cache")
+	ctx.SetContentType("text/event-stream; charset=utf-8")
+	ctx.Response.Header.Set("Cache-Control", "no-cache, no-transform")
 	ctx.Response.Header.Set("Connection", "keep-alive")
-	ctx.Response.Header.Del("Content-Length") // No Content-Length for streaming responses
+	ctx.Response.Header.Set("X-Accel-Buffering", "no")
+	ctx.Response.Header.Del("Content-Length")
 
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
-		reader := bufio.NewReader(conn)
+		reader := bufio.NewReaderSize(conn, upstreamReaderSize)
 
-		// Read and discard response headers
+		// Skip upstream headers
 		for {
 			line, err := reader.ReadString('\n')
 			if err != nil {
-				log.Println("Error reading response headers:", err)
+				log.Println("Header read error:", err)
 				return
 			}
 			if line == "\r\n" {
-				metrics.RequestsTotal.WithLabelValues(strconv.Itoa(200)).Inc()
-				metrics.MetricRequestsAPI.WithLabelValues(apikey, keyData["org"].(string), keyData["org_id"].(string), keyData["chain"].(string), strconv.Itoa(200)).Inc()
 				break
 			}
 		}
 
-		// Stream SSE messages
-		var partialChunk strings.Builder
+		metrics.RequestsTotal.WithLabelValues("200").Inc()
+		metrics.MetricRequestsAPI.WithLabelValues(
+			apikey,
+			keyData["org"].(string),
+			keyData["org_id"].(string),
+			keyData["chain"].(string),
+			"200",
+		).Inc()
+
+		var (
+			eventBuf strings.Builder
+			prevByte byte
+		)
+
 		for {
-			line, err := reader.ReadString('\n') // Read one line at a time
+			b, err := reader.ReadByte()
 			if err != nil {
-				log.Println("SSE connection closed by upstream:", err)
+				if err != io.EOF {
+					log.Println("Upstream read error:", err)
+				}
 				return
 			}
 
-			line = strings.TrimSpace(line) // Remove leading/trailing spaces and newlines
-
-			// Skip empty lines
-			if line == "" {
+			eventBuf.WriteByte(b)
+			if eventBuf.Len() > maxEventSize {
+				log.Println("SSE event exceeded max size, dropping")
+				eventBuf.Reset()
 				continue
 			}
 
-			// Skip chunk size headers (hexadecimal lines)
-			if matched, _ := regexp.MatchString(`^[0-9a-fA-F]+$`, line); matched {
-				continue
+			// Detect "\n\n" (end of SSE event)
+			if prevByte == '\n' && b == '\n' {
+				event := eventBuf.String()
+				eventBuf.Reset()
+
+				// FILTER HERE (event-level, safe)
+				if strings.Contains(event, ":No update available") {
+					prevByte = 0
+					continue
+				}
+
+				if _, err := w.WriteString(event); err != nil {
+					log.Println("Write error:", err)
+					return
+				}
+				if err := w.Flush(); err != nil {
+					log.Println("Flush error:", err)
+					return
+				}
+
+				metrics.RequestsTotal.WithLabelValues("200").Inc()
+				metrics.MetricRequestsAPI.WithLabelValues(
+					apikey,
+					keyData["org"].(string),
+					keyData["org_id"].(string),
+					keyData["chain"].(string),
+					"200",
+				).Inc()
+
+				time.Sleep(5 * time.Millisecond)
 			}
 
-			// Append valid data
-			partialChunk.WriteString(line + "\n") // Add newline since we trimmed it earlier
-
-			// Strip chunk encoding headers
-			cleanData, remaining := stripChunkHeaders(partialChunk.String())
-			partialChunk.Reset()
-			partialChunk.WriteString(remaining)
-
-			// **Filter out messages containing ":No update available"**
-			if strings.Contains(cleanData, ":No update available") {
-				continue
-			}
-
-			// Write and flush cleaned data immediately
-			_, writeErr := w.WriteString(cleanData)
-			if writeErr != nil {
-				log.Println("Error writing SSE data:", writeErr)
-				return
-			}
-			w.Flush()
-
-			metrics.RequestsTotal.WithLabelValues(strconv.Itoa(200)).Inc()
-			metrics.MetricRequestsAPI.WithLabelValues(apikey, keyData["org"].(string), keyData["org_id"].(string), keyData["chain"].(string), strconv.Itoa(200)).Inc()
-
-			time.Sleep(10 * time.Millisecond)
+			prevByte = b
 		}
 	})
-}
-
-func stripChunkHeaders(data string) (cleanData, remaining string) {
-	lines := strings.Split(data, "\n")
-	var output strings.Builder
-	inChunk := false
-
-	for _, line := range lines {
-		// Detect and skip chunk size headers (hex numbers)
-		if matched, _ := regexp.MatchString(`^[0-9a-fA-F]+$`, strings.TrimSpace(line)); matched {
-			inChunk = true
-			continue
-		}
-
-		// Ignore empty lines between chunks
-		if inChunk && strings.TrimSpace(line) == "" {
-			inChunk = false
-			continue
-		}
-
-		output.WriteString(line + "\n")
-	}
-
-	return output.String(), ""
-}
-
-func isHex(str string) bool {
-	_, err := strconv.ParseInt(str, 16, 64)
-	return err == nil
 }
