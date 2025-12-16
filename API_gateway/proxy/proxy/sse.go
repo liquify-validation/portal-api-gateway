@@ -34,7 +34,6 @@ func proxySSE(target string, ctx *fasthttp.RequestCtx, chain string, apikey stri
 		ctx.Error("Failed to connect upstream", fasthttp.StatusBadGateway)
 		return
 	}
-	defer conn.Close()
 
 	req := fmt.Sprintf(
 		"GET %s HTTP/1.1\r\nHost: %s\r\nAccept: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n",
@@ -55,6 +54,8 @@ func proxySSE(target string, ctx *fasthttp.RequestCtx, chain string, apikey stri
 	ctx.Response.Header.Del("Content-Length")
 
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
+		defer conn.Close()
+
 		reader := bufio.NewReaderSize(conn, upstreamReaderSize)
 
 		// Skip upstream headers
@@ -104,7 +105,6 @@ func proxySSE(target string, ctx *fasthttp.RequestCtx, chain string, apikey stri
 				event := eventBuf.String()
 				eventBuf.Reset()
 
-				// FILTER HERE (event-level, safe)
 				if strings.Contains(event, ":No update available") {
 					prevByte = 0
 					continue
