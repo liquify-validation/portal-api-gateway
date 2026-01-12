@@ -82,6 +82,14 @@ func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain str
 			}
 
 			uri := chainCode[attempt%len(chainCode)] + path
+
+			// Parse URI so fasthttp knows the host/path/query parts
+			req.URI().Parse(nil, []byte(uri))
+			
+			// REQUIRED: ensure HTTP/1.1 Host header is present
+			req.Header.SetHostBytes(req.URI().Host())
+			
+			// keep RequestURI consistent too
 			req.SetRequestURI(uri)
 
 			backendResp := fasthttp.AcquireResponse()
