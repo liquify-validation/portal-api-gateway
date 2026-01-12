@@ -92,7 +92,7 @@ func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain str
 			req.Header.SetHostBytes(req.URI().Host())
 
 			backendResp := fasthttp.AcquireResponse()
-			log.Printf("uri=%q hostHdr=%q uriHost=%q",uri, req.Header.Peek("Host"), req.URI().Host())
+			//log.Printf("uri=%q hostHdr=%q uriHost=%q",uri, req.Header.Peek("Host"), req.URI().Host())
 			if err := client.Do(req, backendResp); err != nil {
 				// Transport error → retry
 				log.Printf("proxy network error: %s -> %v", uri, err)
