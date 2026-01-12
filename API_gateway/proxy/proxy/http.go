@@ -83,16 +83,16 @@ func ProxyHttpRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, chain str
 
 			uri := chainCode[attempt%len(chainCode)] + path
 
-			// Parse URI so fasthttp knows the host/path/query parts
+			// Parse the full URL into the request URI
 			req.URI().Parse(nil, []byte(uri))
 			
-			// REQUIRED: ensure HTTP/1.1 Host header is present
+			// Set BOTH the request's host and the header host
+			req.URI().SetHostBytes(req.URI().Host())
+			req.SetHostBytes(req.URI().Host())          // this is the important one
 			req.Header.SetHostBytes(req.URI().Host())
-			
-			// keep RequestURI consistent too
-			req.SetRequestURI(uri)
 
 			backendResp := fasthttp.AcquireResponse()
+			log.Printf("uri=%q hostHdr=%q uriHost=%q",uri, req.Header.Peek("Host"), req.URI().Host())
 			if err := client.Do(req, backendResp); err != nil {
 				// Transport error → retry
 				log.Printf("proxy network error: %s -> %v", uri, err)
