@@ -87,7 +87,7 @@ func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMu
 		key := ip + "/" + chain
 		cacheEntry, found := apiCache.Get(key)
 		if !found {
-			usageCache.Set(key, true, 6*time.Hour)
+			usageCache.Set(key, true, 24*time.Hour)
 			cacheEntry = exists
 		}
 

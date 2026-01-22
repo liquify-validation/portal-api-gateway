@@ -53,21 +53,17 @@ func FetchAPIKeyInfo(db *sql.DB, apiKey string) (map[string]interface{}, error) 
 }
 
 func FetchChainInfo(db *sql.DB, chain string) (map[string]interface{}, error) {
-	var exists bool
+	query := "SELECT name, `limit` FROM chains WHERE name = ? AND public = 1"
+	row := db.QueryRow(query, chain)
 
-	query := `
-		SELECT EXISTS (
-			SELECT 1
-			FROM chains
-			WHERE name = $1
-		)
-	`
-	err := db.QueryRow(query, chain).Scan(&exists)
+	var chainName string
+	var limit int
+	err := row.Scan(&chainName, &limit)
 	if err != nil {
 		return nil, err
 	}
 
 	return map[string]interface{}{
-		"chain": chain, "org": "public", "limit": 10000, "org_id": 0,
+		"chain": chainName, "org": "public", "limit": limit, "org_id": 0,
 	}, nil
 }
