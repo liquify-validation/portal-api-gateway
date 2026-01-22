@@ -13,9 +13,9 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"proxy/database"
 	"proxy/handlers"
 	"proxy/metrics"
-	"proxy/database"
 )
 
 var (
@@ -31,8 +31,8 @@ var (
 
 func main() {
 	verFlag := flag.Bool("v", false, "Print the version and Git commit hash and exit")
-	proxyPort := flag.Int("port.proxy", 80, "Port for the proxy server")
-	metricsPort := flag.Int("port.metrics", 9090, "Port for the metrics server")
+	proxyPort := flag.Int("port.proxy", 8081, "Port for the proxy server")
+	metricsPort := flag.Int("port.metrics", 9091, "Port for the metrics server")
 
 	// Parse command-line flags
 	flag.Parse()

@@ -28,14 +28,8 @@ func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMu
 			ctx.SetBodyString("OK")
 			return
 		}
-
-		// If /api= is present
-		if ctx.QueryArgs().Has("api=") {
-			apiKey, newPath, err := utils.ExtractAPIKeyAndPath(ctx)
-			if err != nil || apiKey == "" {
-				ctx.Error("Forbidden", fasthttp.StatusForbidden)
-				return
-			}
+		apiKey, newPath, err := utils.ExtractAPIKeyAndPath(ctx)
+		if err == nil && apiKey != "" {
 			path = newPath
 
 			cacheEntry, found := apiCache.Get(apiKey)
@@ -84,11 +78,11 @@ func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMu
 
 		// Cache "IP/chain"
 		ip := utils.ClientIPFromXFF(ctx)
-		key := ip + "/" + chain
+		key := ip + "_" + chain
 		cacheEntry, found := apiCache.Get(key)
 		if !found {
-			usageCache.Set(key, true, 24*time.Hour)
 			cacheEntry = exists
+			apiCache.Set(key, cacheEntry, 24*time.Hour)
 		}
 
 		limit := cacheEntry.(map[string]interface{})["limit"].(int)

@@ -64,6 +64,6 @@ func FetchChainInfo(db *sql.DB, chain string) (map[string]interface{}, error) {
 	}
 
 	return map[string]interface{}{
-		"chain": chainName, "org": "public", "limit": limit, "org_id": 0,
+		"chain": chainName, "org": "public", "limit": limit, "org_id": "0",
 	}, nil
 }
