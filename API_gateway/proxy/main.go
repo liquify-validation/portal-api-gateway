@@ -13,9 +13,9 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"proxy/database"
 	"proxy/handlers"
 	"proxy/metrics"
-	"proxy/database"
 )
 
 var (

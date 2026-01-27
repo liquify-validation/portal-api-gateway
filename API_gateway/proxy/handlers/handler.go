@@ -28,41 +28,71 @@ func StartFastHTTPServer(apiCache *cache.Cache, usageCache *cache.Cache, usageMu
 			ctx.SetBodyString("OK")
 			return
 		}
+		apiKey, newPath, err := utils.ExtractAPIKeyAndPath(ctx)
+		if err == nil && apiKey != "" {
+			path = newPath
 
-		apiKey, path, err := utils.ExtractAPIKeyAndPath(ctx)
-		if err != nil || apiKey == "" {
+			cacheEntry, found := apiCache.Get(apiKey)
+			if !found {
+				var err error
+				cacheEntry, err = database.FetchAPIKeyInfo(db, apiKey)
+				if err != nil {
+					if err == sql.ErrNoRows {
+						ctx.Error("Invalid API key", fasthttp.StatusForbidden)
+						metrics.MetricAPICache.WithLabelValues("INVALID").Inc()
+					} else {
+						ctx.Error("Internal server error", fasthttp.StatusInternalServerError)
+					}
+					return
+				}
+				apiCache.Set(apiKey, cacheEntry, 6*time.Hour)
+			}
+
+			limit := cacheEntry.(map[string]interface{})["limit"].(int)
+			if !utils.IncrementAPIUsage(apiKey, limit, usageCache, usageMutexMap) {
+				ctx.Error("Slow down you have hit your daily request limit", fasthttp.StatusTooManyRequests)
+				return
+			}
+
+			if utils.IsWebSocketRequest(ctx) {
+				handleWebSocketRequest(ctx, apiKey, wsEndpoints, cacheEntry.(map[string]interface{}))
+				return
+			}
+			handleHTTPRequest(ctx, httpEndpoints, apiKey, path, cacheEntry.(map[string]interface{}), usageCache, usageMutexMap)
+			return
+		}
+
+		// public check, see if /chain/<chain_name>
+		chain, extra, ok := utils.ExtractChain(path)
+		if !ok {
 			ctx.Error("Forbidden", fasthttp.StatusForbidden)
 			return
 		}
 
-		cacheEntry, found := apiCache.Get(apiKey)
-		if !found {
-			cacheEntry, err = database.FetchAPIKeyInfo(db, apiKey)
-			if err != nil {
-				if err == sql.ErrNoRows {
-					ctx.Error("Invalid API key", fasthttp.StatusForbidden)
-					metrics.MetricAPICache.WithLabelValues("INVALID").Inc()
-				} else {
-					ctx.Error("Internal server error", fasthttp.StatusInternalServerError)
-				}
-				return
-			}
-			apiCache.Set(apiKey, cacheEntry, 6*time.Hour)
+		// Validate chain against DB
+		exists, err := database.FetchChainInfo(db, chain)
+		if err != nil {
+			ctx.Error("Internal server error", fasthttp.StatusInternalServerError)
+			return
 		}
 
-		// Rate limiting
+		// Cache "IP/chain"
+		ip := utils.ClientIPFromXFF(ctx)
+		key := ip + "_" + chain
+		cacheEntry, found := apiCache.Get(key)
+		if !found {
+			cacheEntry = exists
+			apiCache.Set(key, cacheEntry, 24*time.Hour)
+		}
+
 		limit := cacheEntry.(map[string]interface{})["limit"].(int)
-		if !utils.IncrementAPIUsage(apiKey, limit, usageCache, usageMutexMap) {
+		if !utils.IncrementAPIUsage(key, limit, usageCache, usageMutexMap) {
 			ctx.Error("Slow down you have hit your daily request limit", fasthttp.StatusTooManyRequests)
 			return
 		}
 
-		// Routing
-		if utils.IsWebSocketRequest(ctx) {
-			handleWebSocketRequest(ctx, apiKey, wsEndpoints, cacheEntry.(map[string]interface{}))
-			return
-		}
-		handleHTTPRequest(ctx, httpEndpoints, apiKey, path, cacheEntry.(map[string]interface{}), usageCache, usageMutexMap)
+		handleHTTPRequest(ctx, httpEndpoints, "public", extra, cacheEntry.(map[string]interface{}), usageCache, usageMutexMap)
+		return
 	}
 
 	server := &fasthttp.Server{

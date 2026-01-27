@@ -51,3 +51,19 @@ func FetchAPIKeyInfo(db *sql.DB, apiKey string) (map[string]interface{}, error) 
 		"chain": chain, "org": org, "limit": limit, "org_id": strconv.Itoa(orgID),
 	}, nil
 }
+
+func FetchChainInfo(db *sql.DB, chain string) (map[string]interface{}, error) {
+	query := "SELECT name, `limit` FROM chains WHERE name = ? AND public = 1"
+	row := db.QueryRow(query, chain)
+
+	var chainName string
+	var limit int
+	err := row.Scan(&chainName, &limit)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"chain": chainName, "org": "public", "limit": limit, "org_id": "0",
+	}, nil
+}

@@ -1,11 +1,51 @@
 package utils
 
 import (
-	"github.com/valyala/fasthttp"
 	"log"
 	"net/url"
 	"strings"
+
+	"github.com/valyala/fasthttp"
 )
+
+func ExtractChain(path string) (chain string, extra string, ok bool) {
+	const prefix = "/chain/"
+
+	if !strings.HasPrefix(path, prefix) {
+		return "", "", false
+	}
+
+	rest := strings.TrimPrefix(path, prefix)
+	if rest == "" {
+		return "", "", false
+	}
+
+	// Split once: "<chain>" or "<chain>/extra/..."
+	parts := strings.SplitN(rest, "/", 2)
+
+	chain = parts[0]
+	if chain == "" {
+		return "", "", false
+	}
+
+	if len(parts) == 2 {
+		extra = "/" + parts[1] // keep leading slash for routing
+	}
+
+	return chain, extra, true
+}
+
+func ClientIPFromXFF(ctx *fasthttp.RequestCtx) string {
+	xff := string(ctx.Request.Header.Peek("X-Forwarded-For"))
+	if xff != "" {
+		// "client, proxy1, proxy2" -> "client"
+		if i := strings.IndexByte(xff, ','); i >= 0 {
+			xff = xff[:i]
+		}
+		return strings.TrimSpace(xff)
+	}
+	return ctx.RemoteIP().String()
+}
 
 // ExtractAPIKeyAndPath extracts API key and path from request context
 func ExtractAPIKeyAndPath(ctx *fasthttp.RequestCtx) (string, string, error) {
